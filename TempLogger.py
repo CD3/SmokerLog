@@ -20,6 +20,8 @@ import pyqtgraph.multiprocess as mp
 import logging
 import types
 
+from PySide import QtCore
+
 units = pint.UnitRegistry()
 loglevel = logging.DEBUG
 
@@ -95,8 +97,12 @@ def dateTickStrings(self, values, scale, spacing):
     #return [QTime().addMSecs(value).toString('mm:ss') for value in values]
     return [value / 10000. for value in values]
 
-class TempLogger:
-  def __init__(self, host, prefix = "default", read_interval = 1.*units.min, write_interval = 1.*units.min, plot_interval=1.*units.min):
+class TempLogger(QtCore.QObject):
+  new_data_read = QtCore.Signal( dict )
+  plot_data_changed = QtCore.Signal( )
+
+  def __init__(self, host, prefix = "default", read_interval = 1.*units.min, write_interval = 1.*units.min):
+    super(TempLogger,self).__init__()
     self.parser = etree.HTMLParser()
     self.host = host
     #self.url = "http://%(host)s/index.html" % {'host': self.host}
@@ -105,15 +111,15 @@ class TempLogger:
 
     self.prefix = prefix
 
+    self.timefmt = "%Y-%m-%d %H:%M:%S"
+
     self.read_interval = read_interval
     self.read_stop = threading.Event()
     self.write_interval = write_interval
     self.write_stop = threading.Event()
-    self.plot_interval = plot_interval
-    self.plot_stop = threading.Event()
-    self.plot_thread = None
 
     self.cache = collections.deque()
+
 
 
 
@@ -127,6 +133,8 @@ class TempLogger:
                     , "temps" : {} }
 
  
+    self.new_data_read.connect( self.update_cache )
+    self.new_data_read.connect( self.update_plotdata )
 
 
   def read_loop(self):
@@ -141,17 +149,9 @@ class TempLogger:
       self.write()
       self.write_stop.wait( self.write_interval.to( units.second ).magnitude )
 
-  def plot_loop(self):
-
-    self.plot_stop.clear()
-    while not self.plot_stop.is_set():
-      self.plot()
-      self.plot_stop.wait( self.plot_interval.to( units.second ).magnitude )
-
   def stop_loops(self):
     self.read_stop.set()
     self.write_stop.set()
-    self.plot_stop.set()
 
   def read(self):
     btime = datetime.datetime.now()
@@ -174,7 +174,6 @@ class TempLogger:
       return
     etime = datetime.datetime.now()
 
-    
     tree   = etree.parse( StringIO(html), self.parser )
     (sysinfo_table, data_table, trash, trash) = tree.xpath("body/table/form/tr")
 
@@ -184,22 +183,34 @@ class TempLogger:
     for i in range(4,len(rows)-1):
       sensors.append( Sensor( rows[i] ) )
 
-    data = { "time": str(etime)
+    data = { "time": etime.strftime( self.timefmt )
            , "temps" : {} }
+
     for sensor in sensors:
       data["temps"][sensor.name] = sensor.temp
 
 
+    self.new_data_read.emit( data )
+
+    
+  def update_cache( self, data ):
     # the cache is used to write data to file
     self.cache.append(data)
 
+  def update_plotdata( self, data ):
+
+    t = datetime.datetime.strptime( data["time"], self.timefmt )
+
     # the plotdata is used to display a live plot of the temp curves
-    self.plotdata['time'].append( time.mktime( etime.timetuple() ) / 60. ,_callSync='off' )
+    self.plotdata['time'].append( time.mktime( t.timetuple() ) / 60. ,_callSync='off' )
     for name in data["temps"]:
       if not name in self.plotdata["temps"]:
         self.plotdata["temps"][name] = self.plotproc.transfer([])
 
       self.plotdata["temps"][name].append( data["temps"][name], _callSync='off' )
+
+    self.plot_data_changed.emit()
+
 
   def write(self):
     logging.debug("Writing %d items in data cache to file." % len(self.cache))
@@ -211,12 +222,17 @@ class TempLogger:
           f.write( "%s %s\n" % (item["time"],temp) )
 
   def setup_plot(self):
+
     self.plotwin = self.rpg.plot( title="Temperature Logs" )
     self.plotwin.getPlotItem().addLegend()
     self.plotcurves = {}
+    self.plot_data_changed.connect( self.plot )
+    self.plot_data_changed.emit()
+
+  def teardown_plot(self):
+    self.plot_data_changed.disconnect( self.plot )
 
   def plot(self):
-
     i = 0
     N = len( self.plotdata["temps"] )
     for name in self.plotdata["temps"]:
@@ -239,6 +255,8 @@ class TempLogger:
 
 
 
+# commands
+
 def quit(*args):
   logging.info( "shutting down..." )
   templogger.stop_loops()
@@ -251,16 +269,6 @@ def log(*args):
 
 def plot(*args):
   templogger.setup_plot()
-  if templogger.plot_thread == None:
-    pass
-  else:
-    templogger.plot_stop.set()
-    templogger.plot_thread.join()
-    templogger.plot_thread = None
-
-
-  templogger.plot_thread = threading.Thread( target = templogger.plot_loop )
-  templogger.plot_thread.start()
 
 
 def status(*args):
@@ -275,11 +283,13 @@ commands = { "quit" : quit
 
 
 
+
+
+
 mainargparser = argparse.ArgumentParser()
 mainargparser.add_argument("--host"           ,default="192.168.1.2" )
 mainargparser.add_argument("--read_interval"  ,default=1.)
 mainargparser.add_argument("--write_interval" ,default=1.)
-mainargparser.add_argument("--plot_interval"  ,default=1.)
 
 args = mainargparser.parse_args(args = sys.argv[1:])
 
@@ -287,8 +297,7 @@ args = mainargparser.parse_args(args = sys.argv[1:])
 
 templogger = TempLogger( args.host
                    , read_interval  = float(args.read_interval)*units.min
-                   , write_interval = float(args.write_interval)*units.min
-                   , plot_interval  = float(args.plot_interval)*units.min )
+                   , write_interval = float(args.write_interval)*units.min )
 
 threads = [] 
 threads.append( threading.Thread( target = templogger.read_loop ) )
