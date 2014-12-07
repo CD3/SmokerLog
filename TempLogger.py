@@ -33,7 +33,6 @@ class DataExtractor:
   def dump(self):
     print self.__dict__
 
-
 class Sensor(DataExtractor):
   def load(self, elem):
     if elem is not None:
@@ -64,22 +63,11 @@ class Sensor(DataExtractor):
       self.low_set = 0
       self.high_set = 0
 
-
-class Status(DataExtractor):
+class SystemInfo(DataExtractor):
   def load(self, elem):
     if elem is not None:
       self.system = "Stoker"
       info = elem.xpath("td/p")[0]
-
-      # columns
-      # 0 - serial number (plain text)
-      # 1 - name          (input element)
-      # 2 - temperature   (plain text)
-      # 3 - target temp   (input element)
-      # 4 - alarm         (select element)
-      # 5 - low set       (input element)
-      # 6 - high set      (input element)
-      # 7 - blower        (select element)
 
       self.version = info.xpath("br")[1].tail
       match = re.search( "(\d+\.*){1,4}", self.version )
@@ -92,14 +80,23 @@ class Status(DataExtractor):
   def dump(self):
     print self.__dict__
 
+
+
+
+
+
+
 def dateTickStrings(self, values, scale, spacing):
     # PySide's QTime() initialiser fails miserably and dismisses args/kwargs
-    #return [QTime().addMSecs(value).toString('mm:ss') for value in values]
-    return [value / 10000. for value in values]
+    # times will be in number of seconds since...
+    # need to convert this to a tuple, create a datetime object, and output it in the correct format
+    return [datetime.datetime( *time.localtime( value )[0:5] ) for value in values]
 
-class TempLogger(QtCore.QObject):
+
+class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signals
   new_data_read = QtCore.Signal( dict )
   plot_data_changed = QtCore.Signal( )
+  timefmt = "%Y-%m-%d %H:%M:%S"
 
   def __init__(self, host, prefix = "default", read_interval = 1.*units.min, write_interval = 1.*units.min):
     super(TempLogger,self).__init__()
@@ -111,7 +108,6 @@ class TempLogger(QtCore.QObject):
 
     self.prefix = prefix
 
-    self.timefmt = "%Y-%m-%d %H:%M:%S"
 
     self.read_interval = read_interval
     self.read_stop = threading.Event()
@@ -122,14 +118,7 @@ class TempLogger(QtCore.QObject):
 
 
 
-
-    # get the process ready for plotting
-    pg.mkQApp()
-    self.plotproc = mp.QtProcess()
-    self.rpg      = self.plotproc._import('pyqtgraph')
-
-
-    self.plotdata = { "time" : self.plotproc.transfer([])
+    self.plotdata = { "time" : []
                     , "temps" : {} }
 
  
@@ -177,7 +166,7 @@ class TempLogger(QtCore.QObject):
     tree   = etree.parse( StringIO(html), self.parser )
     (sysinfo_table, data_table, trash, trash) = tree.xpath("body/table/form/tr")
 
-    status = Status( sysinfo_table )
+    status = SystemInfo( sysinfo_table )
     sensors = list()
     rows = data_table.xpath("td/table/tr")
     for i in range(4,len(rows)-1):
@@ -202,12 +191,12 @@ class TempLogger(QtCore.QObject):
     t = datetime.datetime.strptime( data["time"], self.timefmt )
 
     # the plotdata is used to display a live plot of the temp curves
-    self.plotdata['time'].append( time.mktime( t.timetuple() ) / 60. ,_callSync='off' )
+    self.plotdata['time'].append( time.mktime( t.timetuple() ) )
     for name in data["temps"]:
       if not name in self.plotdata["temps"]:
-        self.plotdata["temps"][name] = self.plotproc.transfer([])
+        self.plotdata["temps"][name] = []
 
-      self.plotdata["temps"][name].append( data["temps"][name], _callSync='off' )
+      self.plotdata["temps"][name].append( data["temps"][name] )
 
     self.plot_data_changed.emit()
 
@@ -223,8 +212,13 @@ class TempLogger(QtCore.QObject):
 
   def setup_plot(self):
 
-    self.plotwin = self.rpg.plot( title="Temperature Logs" )
-    self.plotwin.getPlotItem().addLegend()
+    self.plotwin = pg.plot(title="Temperature Logs")
+    axis = self.plotwin.getAxis('bottom')
+    # swap out the bottom axis tickStrings function so it will display the date corrrectly
+    axis.tickStrings = types.MethodType( dateTickStrings, axis )
+
+    self.plotwin.getPlotItem().getAxis('bottom').setLabel("time")
+    self.plotwin.getPlotItem().getAxis('left').setLabel("temperature (F)")
     self.plotcurves = {}
     self.plot_data_changed.connect( self.plot )
     self.plot_data_changed.emit()
@@ -240,7 +234,7 @@ class TempLogger(QtCore.QObject):
       if name not in self.plotcurves:
         self.plotcurves[name] = self.plotwin.plot()
 
-      self.plotcurves[name].setData(x = self.plotdata['time'], y = self.plotdata['temps'][name], _callSync='off')
+      self.plotcurves[name].setData(x = self.plotdata['time'], y = self.plotdata['temps'][name])
       self.plotcurves[name].setPen( (i,N) )
 
   def log_event(self, event, time = None):
@@ -252,6 +246,18 @@ class TempLogger(QtCore.QObject):
     
   def print_status(self):
     print "data source: %s" % self.host
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
