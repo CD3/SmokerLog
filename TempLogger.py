@@ -257,6 +257,7 @@ def plot(*args):
 
 
 def status(*args):
+  print "Number of active threads: %d" % threading.active_count()
   templogger.print_status()
 
 commands = { "quit" : quit
