@@ -18,6 +18,7 @@ import shlex
 import pyqtgraph as pg
 import pyqtgraph.multiprocess as mp
 import logging
+import types
 
 units = pint.UnitRegistry()
 loglevel = logging.DEBUG
@@ -89,6 +90,10 @@ class Status(DataExtractor):
   def dump(self):
     print self.__dict__
 
+def dateTickStrings(self, values, scale, spacing):
+    # PySide's QTime() initialiser fails miserably and dismisses args/kwargs
+    #return [QTime().addMSecs(value).toString('mm:ss') for value in values]
+    return [value / 10000. for value in values]
 
 class TempLogger:
   def __init__(self, host, prefix = "default", read_interval = 1.*units.min, write_interval = 1.*units.min, plot_interval=1.*units.min):
@@ -121,6 +126,7 @@ class TempLogger:
     self.plotdata = { "time" : self.plotproc.transfer([])
                     , "temps" : {} }
 
+ 
 
 
   def read_loop(self):
@@ -205,7 +211,8 @@ class TempLogger:
           f.write( "%s %s\n" % (item["time"],temp) )
 
   def setup_plot(self):
-    self.plotwin = self.rpg.plot()
+    self.plotwin = self.rpg.plot( title="Temperature Logs" )
+    self.plotwin.getPlotItem().addLegend()
     self.plotcurves = {}
 
   def plot(self):
