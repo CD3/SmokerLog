@@ -281,6 +281,7 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
   def clear(self):
     self.cache.clear()
     self.init_plotdata()
+    os.remove( self.plotdata_pickle_filename )
     
 
 
@@ -322,6 +323,7 @@ commands = { "quit" : quit
            , "log"  : log
            , "plot"  : plot
            , "status"  : status
+           , "clear"  : clear
            }
 
 
