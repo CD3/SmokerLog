@@ -7,7 +7,6 @@ import datetime
 import time
 import re
 import pint
-import time
 import threading
 import collections
 import signal
@@ -19,6 +18,8 @@ import pyqtgraph as pg
 import pyqtgraph.multiprocess as mp
 import logging
 import types
+import pickle
+import os
 
 from PySide import QtCore
 
@@ -95,38 +96,58 @@ def dateTickStrings(self, values, scale, spacing):
 
 class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signals
   new_data_read = QtCore.Signal( dict )
-  plot_data_changed = QtCore.Signal( )
+  plotdata_changed = QtCore.Signal( )
   timefmt = "%Y-%m-%d %H:%M:%S"
 
   def __init__(self, host, prefix = "default", read_interval = 1.*units.min, write_interval = 1.*units.min):
     super(TempLogger,self).__init__()
 
+    # state information
     self.start = datetime.datetime.now()
 
+    
+    # html scraper
     self.parser = etree.HTMLParser()
     self.host = host
-    #self.url = "http://%(host)s/index.html" % {'host': self.host}
     self.url = "http://%(host)s" % {'host': self.host}
     self.timeout = 5*units.second
 
+    # configuration
     self.prefix = prefix
-
-
     self.read_interval = read_interval
     self.read_stop = threading.Event()
     self.write_interval = write_interval
     self.write_stop = threading.Event()
+    self.do_pickle_plotdata = True
+    self.plotdata_pickle_filename = ".TempLogger.plotdata.pickle"
 
+
+
+
+    # data
     self.cache = collections.deque()
-
-
-
-    self.plotdata = { "time" : []
-                    , "temps" : collections.OrderedDict()  }
+    if os.path.isfile( self.plotdata_pickle_filename ):
+      logging.info("pickled plotdata exists, loading now")
+      self.plotdata = pickle.load( open( self.plotdata_pickle_filename, "rb" ) )
+    else:
+      self.init_plotdata()
 
  
+    # connect signals
     self.new_data_read.connect( self.update_cache )
     self.new_data_read.connect( self.update_plotdata )
+
+    if self.do_pickle_plotdata:
+      self.plotdata_changed.connect( self.pickle_plotdata )
+
+
+
+
+
+
+  def init_plotdata(self):
+      self.plotdata = { "time" : []
+                      , "temps" : collections.OrderedDict()  }
 
 
   def read_loop(self):
@@ -144,6 +165,8 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
   def stop_loops(self):
     self.read_stop.set()
     self.write_stop.set()
+
+
 
   def read(self):
     btime = datetime.datetime.now()
@@ -185,26 +208,6 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
 
     self.new_data_read.emit( data )
 
-    
-  def update_cache( self, data ):
-    # the cache is used to write data to file
-    self.cache.append(data)
-
-  def update_plotdata( self, data ):
-
-    t = datetime.datetime.strptime( data["time"], self.timefmt )
-
-    # the plotdata is used to display a live plot of the temp curves
-    self.plotdata['time'].append( time.mktime( t.timetuple() ) )
-    for name in data["temps"]:
-      if not name in self.plotdata["temps"]:
-        self.plotdata["temps"][name] = []
-
-      self.plotdata["temps"][name].append( data["temps"][name] )
-
-    self.plot_data_changed.emit()
-
-
   def write(self):
     logging.debug("Writing %d items in data cache to file." % len(self.cache))
     while len( self.cache ):
@@ -215,7 +218,6 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
           f.write( "%s %s\n" % (item["time"],temp) )
 
   def setup_plot(self):
-
     self.plotwin = pg.plot(title="Temperature Logs")
     self.plotwin.addLegend()
     axis = self.plotwin.getAxis('bottom')
@@ -226,11 +228,11 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
     self.plotwin.getPlotItem().getAxis('left').setLabel("temperature (F)")
 
     self.plotcurves = {}
-    self.plot_data_changed.connect( self.plot )
-    self.plot_data_changed.emit()
+    self.plotdata_changed.connect( self.plot )
+    self.plotdata_changed.emit()
 
   def teardown_plot(self):
-    self.plot_data_changed.disconnect( self.plot )
+    self.plotdata_changed.disconnect( self.plot )
 
   def plot(self):
     i = 0
@@ -249,11 +251,37 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
     filename = "%s-%s.txt" % (self.prefix,"eventLog")
     with open( filename, 'a' ) as f:
       f.write( "%s '%s'\n" % (str(time),event) )
+
+  def update_cache( self, data ):
+    # the cache is used to write data to file
+    self.cache.append(data)
+
+  def update_plotdata( self, data ):
+    t = datetime.datetime.strptime( data["time"], self.timefmt )
+
+    # the plotdata is used to display a live plot of the temp curves
+    self.plotdata['time'].append( time.mktime( t.timetuple() ) )
+    for name in data["temps"]:
+      if not name in self.plotdata["temps"]:
+        self.plotdata["temps"][name] = []
+
+      self.plotdata["temps"][name].append( data["temps"][name] )
+
+    self.plotdata_changed.emit()
     
   def print_status(self):
     print "data source: %s" % self.host
 
+  def pickle_plotdata(self):
+    pickle.dump( self.plotdata, open( self.plotdata_pickle_filename, "wb" ) )
 
+  def pickle_plotdata(self):
+    pickle.dump( self.plotdata, open( self.plotdata_pickle_filename, "wb" ) )
+
+  def clear(self):
+    self.cache.clear()
+    self.init_plotdata()
+    
 
 
 
@@ -282,11 +310,13 @@ def log(*args):
 def plot(*args):
   templogger.setup_plot()
 
-
 def status(*args):
   print "Number of active threads: %d" % threading.active_count()
   print "Run time: %s"                 % (datetime.datetime.now() - templogger.start)
   templogger.print_status()
+
+def clear(*args):
+  templogger.clear()
 
 commands = { "quit" : quit
            , "log"  : log

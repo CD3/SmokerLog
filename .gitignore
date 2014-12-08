@@ -2,3 +2,4 @@
 *.pyc
 default*txt
 TempLogger.log
+.TempLogger.*.pickle
