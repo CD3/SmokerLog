@@ -1,0 +1,3 @@
+add ability to save plot data state to allow stop and restart
+add qt interface
+add readline for command line iterface
