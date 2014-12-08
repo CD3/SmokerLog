@@ -100,6 +100,9 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
 
   def __init__(self, host, prefix = "default", read_interval = 1.*units.min, write_interval = 1.*units.min):
     super(TempLogger,self).__init__()
+
+    self.start = datetime.datetime.now()
+
     self.parser = etree.HTMLParser()
     self.host = host
     #self.url = "http://%(host)s/index.html" % {'host': self.host}
@@ -119,7 +122,7 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
 
 
     self.plotdata = { "time" : []
-                    , "temps" : {} }
+                    , "temps" : collections.OrderedDict()  }
 
  
     self.new_data_read.connect( self.update_cache )
@@ -161,6 +164,7 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
       logging.debug( "Exception occured while requesting data: '%s'" % e.message )
       logging.debug( "Will try again later")
       return
+
     etime = datetime.datetime.now()
 
     tree   = etree.parse( StringIO(html), self.parser )
@@ -173,7 +177,7 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
       sensors.append( Sensor( rows[i] ) )
 
     data = { "time": etime.strftime( self.timefmt )
-           , "temps" : {} }
+           , "temps" : collections.OrderedDict() }
 
     for sensor in sensors:
       data["temps"][sensor.name] = sensor.temp
@@ -213,12 +217,14 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
   def setup_plot(self):
 
     self.plotwin = pg.plot(title="Temperature Logs")
+    self.plotwin.addLegend()
     axis = self.plotwin.getAxis('bottom')
     # swap out the bottom axis tickStrings function so it will display the date corrrectly
     axis.tickStrings = types.MethodType( dateTickStrings, axis )
 
     self.plotwin.getPlotItem().getAxis('bottom').setLabel("time")
     self.plotwin.getPlotItem().getAxis('left').setLabel("temperature (F)")
+
     self.plotcurves = {}
     self.plot_data_changed.connect( self.plot )
     self.plot_data_changed.emit()
@@ -232,7 +238,7 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
     for name in self.plotdata["temps"]:
       i += 1
       if name not in self.plotcurves:
-        self.plotcurves[name] = self.plotwin.plot()
+        self.plotcurves[name] = self.plotwin.plot( name = name )
 
       self.plotcurves[name].setData(x = self.plotdata['time'], y = self.plotdata['temps'][name])
       self.plotcurves[name].setPen( (i,N) )
@@ -279,6 +285,7 @@ def plot(*args):
 
 def status(*args):
   print "Number of active threads: %d" % threading.active_count()
+  print "Run time: %s"                 % (datetime.datetime.now() - templogger.start)
   templogger.print_status()
 
 commands = { "quit" : quit
