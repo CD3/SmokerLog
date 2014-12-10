@@ -1,3 +1,5 @@
-add ability to save plot data state to allow stop and restart
 add qt interface
 add readline for command line iterface
+add temp command to show current temperature
+add temp stats command to show temperature statistics
+calibration curves

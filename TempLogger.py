@@ -146,8 +146,7 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
 
 
   def init_plotdata(self):
-      self.plotdata = { "time" : []
-                      , "temps" : collections.OrderedDict()  }
+      self.plotdata = collections.OrderedDict()
 
 
   def read_loop(self):
@@ -199,11 +198,11 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
     for i in range(4,len(rows)-1):
       sensors.append( Sensor( rows[i] ) )
 
-    data = { "time": etime.strftime( self.timefmt )
-           , "temps" : collections.OrderedDict() }
+    data = { "time"    : etime.strftime( self.timefmt )
+           , "sensors" : collections.OrderedDict() }
 
     for sensor in sensors:
-      data["temps"][sensor.name] = sensor.temp
+      data["sensors"][sensor.name] = sensor.temp
 
 
     self.new_data_read.emit( data )
@@ -212,7 +211,7 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
     logging.debug("Writing %d items in data cache to file." % len(self.cache))
     while len( self.cache ):
       item = self.cache.popleft()
-      for (name,temp) in item["temps"].items():
+      for (name,temp) in item["sensors"].items():
         filename = "%s-%s.txt" % (self.prefix,name)
         with open( filename, 'a' ) as f:
           f.write( "%s %s\n" % (item["time"],temp) )
@@ -236,13 +235,13 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
 
   def plot(self):
     i = 0
-    N = len( self.plotdata["temps"] )
-    for name in self.plotdata["temps"]:
+    N = len( self.plotdata )
+    for name in self.plotdata:
       i += 1
       if name not in self.plotcurves:
         self.plotcurves[name] = self.plotwin.plot( name = name )
 
-      self.plotcurves[name].setData(x = self.plotdata['time'], y = self.plotdata['temps'][name])
+      self.plotcurves[name].setData(x = self.plotdata[name]['t'], y = self.plotdata[name]['T'])
       self.plotcurves[name].setPen( (i,N) )
 
   def log_event(self, event, time = None):
@@ -257,15 +256,16 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
     self.cache.append(data)
 
   def update_plotdata( self, data ):
+    # plotdata contains all of the time-temperature history data points that will be
+    # plotted. we store a seprate time-temperature pair for every sensor.
+
     t = datetime.datetime.strptime( data["time"], self.timefmt )
+    for name in data["sensors"]:
+      if not name in self.plotdata:
+        self.plotdata[name] = { 't' : [], 'T' : [] }
 
-    # the plotdata is used to display a live plot of the temp curves
-    self.plotdata['time'].append( time.mktime( t.timetuple() ) )
-    for name in data["temps"]:
-      if not name in self.plotdata["temps"]:
-        self.plotdata["temps"][name] = []
-
-      self.plotdata["temps"][name].append( data["temps"][name] )
+      self.plotdata[name]['t'].append( time.mktime( t.timetuple() ) )
+      self.plotdata[name]['T'].append( data["sensors"][name] )
 
     self.plotdata_changed.emit()
     
@@ -332,7 +332,7 @@ commands = { "quit" : quit
 
 
 mainargparser = argparse.ArgumentParser()
-mainargparser.add_argument("--host"           ,default="192.168.1.2" )
+mainargparser.add_argument("--host"           ,default="192.168.1.3" )
 mainargparser.add_argument("--read_interval"  ,default=1.)
 mainargparser.add_argument("--write_interval" ,default=1.)
 
