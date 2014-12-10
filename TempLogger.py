@@ -20,6 +20,10 @@ import logging
 import types
 import pickle
 import os
+import numpy
+import pprint
+import math
+import yaml
 
 from PySide import QtCore
 
@@ -258,19 +262,20 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
   def update_plotdata( self, data ):
     # plotdata contains all of the time-temperature history data points that will be
     # plotted. we store a seprate time-temperature pair for every sensor.
-
     t = datetime.datetime.strptime( data["time"], self.timefmt )
     for name in data["sensors"]:
       if not name in self.plotdata:
-        self.plotdata[name] = { 't' : [], 'T' : [] }
+        self.plotdata[name] = { 't' : numpy.array([]), 'T' : numpy.array([]) }
 
-      self.plotdata[name]['t'].append( time.mktime( t.timetuple() ) )
-      self.plotdata[name]['T'].append( data["sensors"][name] )
+      self.plotdata[name]['t'] = numpy.append( self.plotdata[name]['t'], time.mktime( t.timetuple() ) )
+      self.plotdata[name]['T'] = numpy.append( self.plotdata[name]['T'], data["sensors"][name] )
 
     self.plotdata_changed.emit()
-    
+
   def print_status(self):
     print "data source: %s" % self.host
+    print "read interval: %s" % self.read_interval
+    print "write interval: %s" % self.write_interval
 
   def pickle_plotdata(self):
     pickle.dump( self.plotdata, open( self.plotdata_pickle_filename, "wb" ) )
@@ -283,7 +288,25 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
     self.init_plotdata()
     os.remove( self.plotdata_pickle_filename )
     
+ def get_stats(self, period = None ):
+    if period == None:
+      starti = 0
+    else:
+      pass
 
+    stats = {}
+    for sensor in self.plotdata:
+      stats[sensor] = {}
+      T = self.plotdata[sensor]['T']
+
+      # we need to convert all calculations to float
+      stats[sensor]['max']   = float( max( T[starti:]) )
+      stats[sensor]['min']   = float( min( T[starti:]) )
+      stats[sensor]['avg']   = float( sum( T[starti:]) / len( T[starti:] ) )
+      stats[sensor]['stdev'] = float( math.sqrt( sum( (T[starti:] - stats[sensor]['avg'])**2 ) ) )
+
+
+    return stats
 
 
 
@@ -319,11 +342,16 @@ def status(*args):
 def clear(*args):
   templogger.clear()
 
+def stats(*args):
+  statistics = templogger.get_stats()
+  print yaml.dump( statistics, default_flow_style=False )
+
 commands = { "quit" : quit
            , "log"  : log
            , "plot"  : plot
            , "status"  : status
            , "clear"  : clear
+           , "stats"  : stats
            }
 
 
