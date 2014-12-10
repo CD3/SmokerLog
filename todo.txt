@@ -1,5 +1,3 @@
 add qt interface
 add readline for command line iterface
-add temp command to show current temperature
-add temp stats command to show temperature statistics
 calibration curves

@@ -288,22 +288,36 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
     self.init_plotdata()
     os.remove( self.plotdata_pickle_filename )
     
- def get_stats(self, period = None ):
+  def get_stats(self, period = None ):
+
     if period == None:
-      starti = 0
+      period = 10*units.year
     else:
-      pass
+      if isinstance( period, type( units.second ) ):
+        period = period.to( units.second ).magnitude
+
+    # get the last time that has been logged for all sensors
+    endt = max( [ max(self.plotdata[sensor]['t']) for sensor in self.plotdata ] )
+    # get the start time of the period
+    startt = endt - period
+    # get the index of the start of the period for all of the sensors
+    starti= dict()
+    for sensor in self.plotdata:
+      starti[sensor] = numpy.searchsorted( self.plotdata[sensor]['t'], startt )
 
     stats = {}
     for sensor in self.plotdata:
-      stats[sensor] = {}
+      si = starti[sensor]
+
       T = self.plotdata[sensor]['T']
 
+      stats[sensor] = {}
       # we need to convert all calculations to float
-      stats[sensor]['max']   = float( max( T[starti:]) )
-      stats[sensor]['min']   = float( min( T[starti:]) )
-      stats[sensor]['avg']   = float( sum( T[starti:]) / len( T[starti:] ) )
-      stats[sensor]['stdev'] = float( math.sqrt( sum( (T[starti:] - stats[sensor]['avg'])**2 ) ) )
+      stats[sensor]['current']  = float( max( T[si:]) )
+      stats[sensor]['max']      = float( max( T[si:]) )
+      stats[sensor]['min']      = float( min( T[si:]) )
+      stats[sensor]['avg']      = float( sum( T[si:]) / len( T[si:] ) )
+      stats[sensor]['stdev']    = float( math.sqrt( sum( (T[si:] - stats[sensor]['avg'])**2 ) ) )
 
 
     return stats
@@ -343,8 +357,17 @@ def clear(*args):
   templogger.clear()
 
 def stats(*args):
-  statistics = templogger.get_stats()
-  print yaml.dump( statistics, default_flow_style=False )
+  
+  for arg in list(args) + ["Total"]:
+    try:
+      period = units.parse_expression( arg )
+    except:
+      period = 10*units.year
+    statistics = templogger.get_stats(period)
+    print yaml.dump( {arg : statistics}, default_flow_style=False )
+
+def dump(*args):
+    pprint.pprint( templogger.plotdata )
 
 commands = { "quit" : quit
            , "log"  : log
@@ -352,6 +375,7 @@ commands = { "quit" : quit
            , "status"  : status
            , "clear"  : clear
            , "stats"  : stats
+           , "dump"  : dump
            }
 
 
