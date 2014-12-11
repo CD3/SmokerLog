@@ -90,12 +90,15 @@ class SystemInfo(DataExtractor):
 
 
 
+plottimefmt = "%H:%M:%S"
+def epoch2humanTime( t ):
+  return datetime.datetime( *time.localtime( t )[0:5] ).strftime( plottimefmt )
 
 def dateTickStrings(self, values, scale, spacing):
     # PySide's QTime() initialiser fails miserably and dismisses args/kwargs
     # times will be in number of seconds since...
     # need to convert this to a tuple, create a datetime object, and output it in the correct format
-    return [datetime.datetime( *time.localtime( value )[0:5] ) for value in values]
+    return [ epoch2humanTime( value ) for value in values]
 
 
 class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signals
@@ -221,21 +224,97 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
           f.write( "%s %s\n" % (item["time"],temp) )
 
   def setup_plot(self):
-    self.plotwin = pg.plot(title="Temperature Logs")
-    self.plotwin.addLegend()
-    axis = self.plotwin.getAxis('bottom')
+    # create the plot window and set it's title
+    self.plotwin = pg.GraphicsWindow()
+    self.plotwin.setWindowTitle("Temperature Logs")
+
+    # add items to window.
+    # put a label at the top to display coordinates
+    self.zCoordsLabel = pg.LabelItem(justify='right')
+    self.zCoordsLabel.setText( "(0,0)" )
+    # add plots to the window
+    self.plotwin.addItem( self.zCoordsLabel )
+    # zoom window
+    self.zplot = self.plotwin.addPlot( row=1, col=0 )
+    # region window
+    self.rplot = self.plotwin.addPlot( row=2, col=0 )
+
+    # configure the axises (labels and tics)
+    axis = self.zplot.getAxis('bottom')
+    axis.setLabel("time")
     # swap out the bottom axis tickStrings function so it will display the date corrrectly
     axis.tickStrings = types.MethodType( dateTickStrings, axis )
+    axis = self.zplot.getAxis('left')
+    axis.setLabel("temperature (F)")
 
-    self.plotwin.getPlotItem().getAxis('bottom').setLabel("time")
-    self.plotwin.getPlotItem().getAxis('left').setLabel("temperature (F)")
+    axis = self.rplot.getAxis('bottom')
+    axis.setLabel("time")
+    axis.tickStrings = types.MethodType( dateTickStrings, axis )
+    axis = self.rplot.getAxis('left')
+    axis.setLabel("temperature (F)")
 
+
+
+    # add cross hair to the zoom plot
+    self.crosshair = dict()
+    self.crosshair['v'] = pg.InfiniteLine(angle=90, movable=False)
+    self.crosshair['h'] = pg.InfiniteLine(angle=0 , movable=False)
+    self.zplot.addItem( self.crosshair['v'], ignoreBounds=True )
+    self.zplot.addItem( self.crosshair['h'], ignoreBounds=True )
+
+    def mouseMoved(evt):
+      # slot to update the crosshairs
+      pos = evt
+      if self.zplot.sceneBoundingRect().contains(pos):
+          mousePoint = self.zplot.vb.mapSceneToView(pos)
+          index = int(mousePoint.x())
+
+          self.zCoordsLabel.setText( "(%(x)s, %(y).1f)" % {'x' : epoch2humanTime( mousePoint.x() ), 'y' : mousePoint.y()}  )
+
+          self.crosshair['v'].setPos(mousePoint.x())
+          self.crosshair['h'].setPos(mousePoint.y())
+
+
+
+
+    # add region to the region plot
+    self.plotregion = pg.LinearRegionItem()
+    self.plotregion.setZValue(100) # make sure region gets displayed on top
+    self.rplot.addItem( self.plotregion, ignoreBounds=True )
+    self.rplot.setAutoVisible(y=True)
+
+    self.plotregion.setRegion( [self.getMinTime(), self.getMaxTime()] )
+
+    def updateZoomPlot():
+      # slot to update zoom plot range when region is changed
+      self.plotregion.setZValue(100)
+      mint,maxt = self.plotregion.getRegion()
+      self.zplot.setXRange( mint, maxt, padding=0 )
+
+    def updateRegion(wind, viewRange):
+      # slot to update the region when zoom plot range changes
+      self.plotregion.setRegion( viewRange[0] )
+
+
+    # initialize the list of plot curves (actually, it is a dict)
     self.plotcurves = {}
+
+    # connect signals
+    self.zplot.scene().sigMouseMoved.connect(mouseMoved)
     self.plotdata_changed.connect( self.plot )
+    self.plotregion.sigRegionChanged.connect( updateZoomPlot )
+    self.zplot.sigRangeChanged.connect( updateRegion )
+
+    # emit signal that will cause plot to update
     self.plotdata_changed.emit()
 
-  def teardown_plot(self):
-    self.plotdata_changed.disconnect( self.plot )
+
+  def getMinTime(self):
+    return min( [ min(self.plotdata[sensor]['t']) for sensor in self.plotdata ] )
+
+  def getMaxTime(self):
+    return max( [ max(self.plotdata[sensor]['t']) for sensor in self.plotdata ] )
+
 
   def plot(self):
     i = 0
@@ -243,10 +322,21 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
     for name in self.plotdata:
       i += 1
       if name not in self.plotcurves:
-        self.plotcurves[name] = self.plotwin.plot( name = name )
+        self.plotcurves[name] = dict()
+        self.plotcurves[name]['region'] = self.rplot.plot( name = name )
+        self.plotcurves[name]['zoom']   = self.zplot.plot( name = name )
 
-      self.plotcurves[name].setData(x = self.plotdata[name]['t'], y = self.plotdata[name]['T'])
-      self.plotcurves[name].setPen( (i,N) )
+      self.plotcurves[name]['region'].setData(x = self.plotdata[name]['t'], y = self.plotdata[name]['T'])
+      self.plotcurves[name]['region'].setPen( (i,N) )
+
+      self.plotcurves[name]['zoom'].setData(x = self.plotdata[name]['t'], y = self.plotdata[name]['T'])
+      self.plotcurves[name]['zoom'].setPen( (i,N) )
+
+
+
+
+
+
 
   def log_event(self, event, time = None):
     if time is None:
@@ -297,7 +387,7 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
         period = period.to( units.second ).magnitude
 
     # get the last time that has been logged for all sensors
-    endt = max( [ max(self.plotdata[sensor]['t']) for sensor in self.plotdata ] )
+    endt = self.getMaxTime()
     # get the start time of the period
     startt = endt - period
     # get the index of the start of the period for all of the sensors
@@ -351,6 +441,7 @@ def plot(*args):
 def status(*args):
   print "Number of active threads: %d" % threading.active_count()
   print "Run time: %s"                 % (datetime.datetime.now() - templogger.start)
+  print "Last read time: %s"           % epoch2humanTime( templogger.getMaxTime() )
   templogger.print_status()
 
 def clear(*args):
