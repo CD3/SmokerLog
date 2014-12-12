@@ -90,20 +90,217 @@ class SystemInfo(DataExtractor):
 
 
 
-plottimefmt = "%H:%M:%S"
-def epoch2humanTime( t ):
-  return datetime.datetime( *time.localtime( t )[0:5] ).strftime( plottimefmt )
 
-def dateTickStrings(self, values, scale, spacing):
-    # PySide's QTime() initialiser fails miserably and dismisses args/kwargs
-    # times will be in number of seconds since...
-    # need to convert this to a tuple, create a datetime object, and output it in the correct format
-    return [ epoch2humanTime( value ) for value in values]
+def epoch2humanTime( t ):
+  return datetime.datetime( *time.localtime( t )[0:5] ).strftime( TempPlot.timefmt )
+
+class TempPlot(QtCore.QObject): # we inherit from QObject so we can emit signals
+
+  data_changed = QtCore.Signal( )
+  timefmt = "%H:%M:%S"
+
+
+  def __init__(self, **kargs):
+    super(TempPlot,self).__init__()
+
+    # configuration options
+    self.do_pickle_data = True
+    self.data_pickle_filename = ".TempLogger.plotdata.pickle"
+    self.tempunits = "F"
+    self.colors = [ 'r', 'b', 'g', 'y' ]
+
+    if os.path.isfile( self.data_pickle_filename ):
+      logging.info("pickled plot data exists, loading now")
+      self.data = pickle.load( open( self.data_pickle_filename, "rb" ) )
+    else:
+      self.init_data
+
+    if self.do_pickle_data:
+      self.data_changed.connect( self.pickle_data )
+
+
+
+
+
+
+
+
+  def display(self):
+
+    # create the plot window and set it's title
+    self.plotwin = pg.GraphicsWindow()
+    self.plotwin.setWindowTitle("Temperature Logs")
+
+    # add items to window.
+    # put a label at the top to display coordinates
+    self.zCoordsLabel = pg.LabelItem(justify='right')
+    self.zCoordsLabel.setText( "(0,0)", row = 0, col = 0 )
+
+
+    # add plots to the window
+    self.plotwin.addItem( self.zCoordsLabel )
+    # zoom window
+    self.zplot = self.plotwin.addPlot( row=1, col=0 )
+
+    self.zplot.addLegend()
+
+
+    # region window
+    self.rplot = self.plotwin.addPlot( row=3, col=0 )
+
+    # configure the axises (labels and tics)
+    axis = self.zplot.getAxis('bottom')
+    axis.setLabel("time")
+    # swap out the bottom axis tickStrings function so it will display the date corrrectly
+    def dateTickStrings(self, values, scale, spacing):
+        # PySide's QTime() initialiser fails miserably and dismisses args/kwargs
+        # times will be in number of seconds since...
+        # need to convert this to a tuple, create a datetime object, and output it in the correct format
+        return [ epoch2humanTime( value ) for value in values]
+
+
+    axis.tickStrings = types.MethodType( dateTickStrings, axis )
+    axis = self.zplot.getAxis('left')
+    axis.setLabel("temperature (%s)" % self.tempunits)
+
+    axis = self.rplot.getAxis('bottom')
+    axis.setLabel("time")
+    axis.tickStrings = types.MethodType( dateTickStrings, axis )
+    axis = self.rplot.getAxis('left')
+    axis.setLabel("temperature (%s)" % self.tempunits)
+
+
+
+    # ad a text item to display current temperatures
+    self.tempDispHeader = '<div style="text-align: left"><span style="color: #FFF;">Current Temps</span></div>'
+    self.tempDisp = pg.TextItem( html=self.tempDispHeader, anchor=(1,0) )
+    self.rplot.addItem( self.tempDisp )
+
+
+
+    # add cross hair to the zoom plot
+    self.crosshair = dict()
+    self.crosshair['v'] = pg.InfiniteLine(angle=90, movable=False)
+    self.crosshair['h'] = pg.InfiniteLine(angle=0 , movable=False)
+    self.zplot.addItem( self.crosshair['v'], ignoreBounds=True )
+    self.zplot.addItem( self.crosshair['h'], ignoreBounds=True )
+
+    def mouseMoved(evt):
+      # slot to update the crosshairs
+      pos = evt
+      if self.zplot.sceneBoundingRect().contains(pos):
+          mousePoint = self.zplot.vb.mapSceneToView(pos)
+          index = int(mousePoint.x())
+
+          self.zCoordsLabel.setText( "(%(x)s, %(y).1f)" % {'x' : epoch2humanTime( mousePoint.x() ), 'y' : mousePoint.y()}  )
+
+          self.crosshair['v'].setPos(mousePoint.x())
+          self.crosshair['h'].setPos(mousePoint.y())
+
+
+
+
+    # add region to the region plot
+    self.plotregion = pg.LinearRegionItem()
+    self.plotregion.setZValue(100) # make sure region gets displayed on top
+    self.rplot.addItem( self.plotregion, ignoreBounds=True )
+    self.rplot.setAutoVisible(y=True)
+
+    self.plotregion.setRegion( [self.getMinTime(), self.getMaxTime()] )
+
+    def updateZoomPlot():
+      # slot to update zoom plot range when region is changed
+      self.plotregion.setZValue(100)
+      mint,maxt = self.plotregion.getRegion()
+      self.zplot.setXRange( mint, maxt, padding=0 )
+
+    def updateRegion(wind, viewRange):
+      # slot to update the region when zoom plot range changes
+      self.plotregion.setRegion( viewRange[0] )
+
+
+
+
+
+
+    # initialize the list of plot curves (actually, it is a dict)
+    self.plotcurves = {}
+
+    # connect signals
+    self.zplot.scene().sigMouseMoved.connect(mouseMoved)
+    self.data_changed.connect( self.plot )
+    self.plotregion.sigRegionChanged.connect( updateZoomPlot )
+    self.zplot.sigRangeChanged.connect( updateRegion )
+
+    # emit signal that will cause plot to update
+    self.data_changed.emit()
+
+
+
+
+  def append_to_data( self, data ):
+    # data contains all of the time-temperature history data points that will be
+    # plotted. we store a seprate time-temperature pair for every sensor.
+    t = datetime.datetime.strptime( data["time"], TempLogger.timefmt )
+    for name in data["sensors"]:
+      if not name in self.data:
+        self.data[name] = { 't' : numpy.array([]), 'T' : numpy.array([]) }
+
+      self.data[name]['t'] = numpy.append( self.data[name]['t'], time.mktime( t.timetuple() ) )
+      self.data[name]['T'] = numpy.append( self.data[name]['T'], data["sensors"][name] )
+
+    self.data_changed.emit()
+
+
+  def plot(self):
+    i = 0
+    N = len( self.data )
+
+
+    for name in self.data:
+      if name not in self.plotcurves:
+        self.plotcurves[name] = dict()
+        self.plotcurves[name]['region'] = self.rplot.plot( name = name )
+        self.plotcurves[name]['zoom']   = self.zplot.plot( name = name )
+
+      self.plotcurves[name]['region'].setData(x = self.data[name]['t'], y = self.data[name]['T'], pen=pg.mkPen( self.colors[i] ) )
+      self.plotcurves[name]['zoom'  ].setData(x = self.data[name]['t'], y = self.data[name]['T'], pen=pg.mkPen( self.colors[i] ) )
+      i += 1
+
+    self.drawCurrentTemps()
+
+  def show(self):
+    pass
+
+
+  def drawCurrentTemps(self):
+    view = self.rplot.viewRange()
+
+    self.tempDisp.setPos( view[0][1], view[1][1] )
+
+  def getMinTime(self):
+    return min( [ min(self.data[sensor]['t']) for sensor in self.data ] )
+
+  def getMaxTime(self):
+    return max( [ max(self.data[sensor]['t']) for sensor in self.data ] )
+
+
+  def pickle_data(self):
+    pickle.dump( self.data, open( self.data_pickle_filename, "wb" ) )
+
+  def clear(self):
+    self.init_data()
+    os.remove( self.data_pickle_filename )
+  
+  def init_data(self):
+    self.data = collections.OrderedDict()
+
+
 
 
 class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signals
+
   new_data_read = QtCore.Signal( dict )
-  plotdata_changed = QtCore.Signal( )
   timefmt = "%Y-%m-%d %H:%M:%S"
 
   def __init__(self, host, prefix = "default", read_interval = 1.*units.min, write_interval = 1.*units.min):
@@ -111,7 +308,6 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
 
     # state information
     self.start = datetime.datetime.now()
-
     
     # html scraper
     self.parser = etree.HTMLParser()
@@ -125,35 +321,14 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
     self.read_stop = threading.Event()
     self.write_interval = write_interval
     self.write_stop = threading.Event()
-    self.do_pickle_plotdata = True
-    self.plotdata_pickle_filename = ".TempLogger.plotdata.pickle"
-
-
-
+    self.tempunits = "F"
 
     # data
     self.cache = collections.deque()
-    if os.path.isfile( self.plotdata_pickle_filename ):
-      logging.info("pickled plotdata exists, loading now")
-      self.plotdata = pickle.load( open( self.plotdata_pickle_filename, "rb" ) )
-    else:
-      self.init_plotdata()
 
  
     # connect signals
-    self.new_data_read.connect( self.update_cache )
-    self.new_data_read.connect( self.update_plotdata )
-
-    if self.do_pickle_plotdata:
-      self.plotdata_changed.connect( self.pickle_plotdata )
-
-
-
-
-
-
-  def init_plotdata(self):
-      self.plotdata = collections.OrderedDict()
+    self.new_data_read.connect( self.append_to_cache )
 
 
   def read_loop(self):
@@ -171,8 +346,6 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
   def stop_loops(self):
     self.read_stop.set()
     self.write_stop.set()
-
-
 
   def read(self):
     btime = datetime.datetime.now()
@@ -223,119 +396,6 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
         with open( filename, 'a' ) as f:
           f.write( "%s %s\n" % (item["time"],temp) )
 
-  def setup_plot(self):
-    # create the plot window and set it's title
-    self.plotwin = pg.GraphicsWindow()
-    self.plotwin.setWindowTitle("Temperature Logs")
-
-    # add items to window.
-    # put a label at the top to display coordinates
-    self.zCoordsLabel = pg.LabelItem(justify='right')
-    self.zCoordsLabel.setText( "(0,0)" )
-    # add plots to the window
-    self.plotwin.addItem( self.zCoordsLabel )
-    # zoom window
-    self.zplot = self.plotwin.addPlot( row=1, col=0 )
-    # region window
-    self.rplot = self.plotwin.addPlot( row=2, col=0 )
-
-    # configure the axises (labels and tics)
-    axis = self.zplot.getAxis('bottom')
-    axis.setLabel("time")
-    # swap out the bottom axis tickStrings function so it will display the date corrrectly
-    axis.tickStrings = types.MethodType( dateTickStrings, axis )
-    axis = self.zplot.getAxis('left')
-    axis.setLabel("temperature (F)")
-
-    axis = self.rplot.getAxis('bottom')
-    axis.setLabel("time")
-    axis.tickStrings = types.MethodType( dateTickStrings, axis )
-    axis = self.rplot.getAxis('left')
-    axis.setLabel("temperature (F)")
-
-
-
-    # add cross hair to the zoom plot
-    self.crosshair = dict()
-    self.crosshair['v'] = pg.InfiniteLine(angle=90, movable=False)
-    self.crosshair['h'] = pg.InfiniteLine(angle=0 , movable=False)
-    self.zplot.addItem( self.crosshair['v'], ignoreBounds=True )
-    self.zplot.addItem( self.crosshair['h'], ignoreBounds=True )
-
-    def mouseMoved(evt):
-      # slot to update the crosshairs
-      pos = evt
-      if self.zplot.sceneBoundingRect().contains(pos):
-          mousePoint = self.zplot.vb.mapSceneToView(pos)
-          index = int(mousePoint.x())
-
-          self.zCoordsLabel.setText( "(%(x)s, %(y).1f)" % {'x' : epoch2humanTime( mousePoint.x() ), 'y' : mousePoint.y()}  )
-
-          self.crosshair['v'].setPos(mousePoint.x())
-          self.crosshair['h'].setPos(mousePoint.y())
-
-
-
-
-    # add region to the region plot
-    self.plotregion = pg.LinearRegionItem()
-    self.plotregion.setZValue(100) # make sure region gets displayed on top
-    self.rplot.addItem( self.plotregion, ignoreBounds=True )
-    self.rplot.setAutoVisible(y=True)
-
-    self.plotregion.setRegion( [self.getMinTime(), self.getMaxTime()] )
-
-    def updateZoomPlot():
-      # slot to update zoom plot range when region is changed
-      self.plotregion.setZValue(100)
-      mint,maxt = self.plotregion.getRegion()
-      self.zplot.setXRange( mint, maxt, padding=0 )
-
-    def updateRegion(wind, viewRange):
-      # slot to update the region when zoom plot range changes
-      self.plotregion.setRegion( viewRange[0] )
-
-
-    # initialize the list of plot curves (actually, it is a dict)
-    self.plotcurves = {}
-
-    # connect signals
-    self.zplot.scene().sigMouseMoved.connect(mouseMoved)
-    self.plotdata_changed.connect( self.plot )
-    self.plotregion.sigRegionChanged.connect( updateZoomPlot )
-    self.zplot.sigRangeChanged.connect( updateRegion )
-
-    # emit signal that will cause plot to update
-    self.plotdata_changed.emit()
-
-
-  def getMinTime(self):
-    return min( [ min(self.plotdata[sensor]['t']) for sensor in self.plotdata ] )
-
-  def getMaxTime(self):
-    return max( [ max(self.plotdata[sensor]['t']) for sensor in self.plotdata ] )
-
-
-  def plot(self):
-    i = 0
-    N = len( self.plotdata )
-    for name in self.plotdata:
-      i += 1
-      if name not in self.plotcurves:
-        self.plotcurves[name] = dict()
-        self.plotcurves[name]['region'] = self.rplot.plot( name = name )
-        self.plotcurves[name]['zoom']   = self.zplot.plot( name = name )
-
-      self.plotcurves[name]['region'].setData(x = self.plotdata[name]['t'], y = self.plotdata[name]['T'])
-      self.plotcurves[name]['region'].setPen( (i,N) )
-
-      self.plotcurves[name]['zoom'].setData(x = self.plotdata[name]['t'], y = self.plotdata[name]['T'])
-      self.plotcurves[name]['zoom'].setPen( (i,N) )
-
-
-
-
-
 
 
   def log_event(self, event, time = None):
@@ -345,74 +405,18 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
     with open( filename, 'a' ) as f:
       f.write( "%s '%s'\n" % (str(time),event) )
 
-  def update_cache( self, data ):
+  def append_to_cache( self, data ):
     # the cache is used to write data to file
     self.cache.append(data)
-
-  def update_plotdata( self, data ):
-    # plotdata contains all of the time-temperature history data points that will be
-    # plotted. we store a seprate time-temperature pair for every sensor.
-    t = datetime.datetime.strptime( data["time"], self.timefmt )
-    for name in data["sensors"]:
-      if not name in self.plotdata:
-        self.plotdata[name] = { 't' : numpy.array([]), 'T' : numpy.array([]) }
-
-      self.plotdata[name]['t'] = numpy.append( self.plotdata[name]['t'], time.mktime( t.timetuple() ) )
-      self.plotdata[name]['T'] = numpy.append( self.plotdata[name]['T'], data["sensors"][name] )
-
-    self.plotdata_changed.emit()
 
   def print_status(self):
     print "data source: %s" % self.host
     print "read interval: %s" % self.read_interval
     print "write interval: %s" % self.write_interval
 
-  def pickle_plotdata(self):
-    pickle.dump( self.plotdata, open( self.plotdata_pickle_filename, "wb" ) )
-
-  def pickle_plotdata(self):
-    pickle.dump( self.plotdata, open( self.plotdata_pickle_filename, "wb" ) )
-
   def clear(self):
     self.cache.clear()
-    self.init_plotdata()
-    os.remove( self.plotdata_pickle_filename )
     
-  def get_stats(self, period = None ):
-
-    if period == None:
-      period = 10*units.year
-    else:
-      if isinstance( period, type( units.second ) ):
-        period = period.to( units.second ).magnitude
-
-    # get the last time that has been logged for all sensors
-    endt = self.getMaxTime()
-    # get the start time of the period
-    startt = endt - period
-    # get the index of the start of the period for all of the sensors
-    starti= dict()
-    for sensor in self.plotdata:
-      starti[sensor] = numpy.searchsorted( self.plotdata[sensor]['t'], startt )
-
-    stats = {}
-    for sensor in self.plotdata:
-      si = starti[sensor]
-
-      T = self.plotdata[sensor]['T']
-
-      stats[sensor] = {}
-      # we need to convert all calculations to float
-      stats[sensor]['current']  = float( max( T[si:]) )
-      stats[sensor]['max']      = float( max( T[si:]) )
-      stats[sensor]['min']      = float( min( T[si:]) )
-      stats[sensor]['avg']      = float( sum( T[si:]) / len( T[si:] ) )
-      stats[sensor]['stdev']    = float( math.sqrt( sum( (T[si:] - stats[sensor]['avg'])**2 ) ) )
-
-
-    return stats
-
-
 
 
 
@@ -436,29 +440,38 @@ def log(*args):
     templogger.log_event(event)
 
 def plot(*args):
-  templogger.setup_plot()
+  plot.display()
 
 def status(*args):
   print "Number of active threads: %d" % threading.active_count()
   print "Run time: %s"                 % (datetime.datetime.now() - templogger.start)
-  print "Last read time: %s"           % epoch2humanTime( templogger.getMaxTime() )
+  print "Last read time: %s"           % epoch2humanTime( plot.getMaxTime() )
   templogger.print_status()
 
 def clear(*args):
   templogger.clear()
+  plot.clear()
 
 def stats(*args):
   
-  for arg in list(args) + ["Total"]:
-    try:
-      period = units.parse_expression( arg )
-    except:
-      period = 10*units.year
-    statistics = templogger.get_stats(period)
-    print yaml.dump( {arg : statistics}, default_flow_style=False )
+  stats = dict()
+  stats["Total"] = {}
+  for sensor in plot.data:
+    T = plot.data[sensor]['T']
+
+    stats["Total"][sensor] = {}
+    # we need to convert all calculations to float
+    stats["Total"][sensor]['current']  = float( max( T) )
+    stats["Total"][sensor]['max']      = float( max( T) )
+    stats["Total"][sensor]['min']      = float( min( T) )
+    stats["Total"][sensor]['avg']      = float( sum( T) / len( T ) )
+    stats["Total"][sensor]['stdev']    = float( math.sqrt( sum( (T - stats["Total"][sensor]['avg'])**2 ) ) )
+
+  print yaml.dump( stats, default_flow_style=False )
+
 
 def dump(*args):
-    pprint.pprint( templogger.plotdata )
+    pprint.pprint( plot.data )
 
 commands = { "quit" : quit
            , "log"  : log
@@ -490,6 +503,10 @@ templogger = TempLogger( args.host
 threads = [] 
 threads.append( threading.Thread( target = templogger.read_loop ) )
 threads.append( threading.Thread( target = templogger.write_loop ) )
+
+plot = TempPlot()
+
+templogger.new_data_read.connect( plot.append_to_data )
 
 for t in threads:
   t.start()
