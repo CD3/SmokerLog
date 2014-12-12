@@ -24,6 +24,7 @@ import numpy
 import pprint
 import math
 import yaml
+import readline
 
 from PySide import QtCore
 
@@ -32,6 +33,8 @@ loglevel = logging.DEBUG
 
 logging.basicConfig(filename='TempLogger.log',level=loglevel, format='[%(levelname)s] (%(threadName)s) %(asctime)s - %(message)s')
 
+readline.parse_and_bind('tab: complete')
+readline.parse_and_bind('set editing-mode vi')
 #       _   _ _    __                  _   _                 
 # _   _| |_(_) |  / _|_   _ _ __   ___| |_(_) ___  _ __  ___ 
 #| | | | __| | | | |_| | | | '_ \ / __| __| |/ _ \| '_ \/ __|
@@ -135,6 +138,11 @@ class StokerWebSource( DataSource ):
     self.parser = etree.HTMLParser()
     self.url = "http://%(host)s" % {'host': self.host}
     self.timeout = 5*units.second
+
+
+
+  def __str__(self):
+    return "Stoker Web Interface (%s)" % self.host
 
 
   def get_data(self):
@@ -499,7 +507,7 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
     self.cache.append(data)
 
   def print_status(self):
-    print "data source: %s" % self.host
+    print "data source: %s" % self.data_source
     print "read interval: %s" % self.read_interval
     print "write interval: %s" % self.write_interval
 
