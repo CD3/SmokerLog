@@ -33,7 +33,7 @@ loglevel = logging.DEBUG
 logging.basicConfig(filename='TempLogger.log',level=loglevel, format='[%(levelname)s] (%(threadName)s) %(asctime)s - %(message)s')
 
 
-
+# data sources
 
 class DataSource:
   def get_data(self):
@@ -59,7 +59,6 @@ class IntermittentDataSource(DataSource):
 
 
 class StokerWebSource( DataSource ):
-
   class DataExtractor:
     def __init__(self, elem = None):
       self.load(elem)
@@ -178,7 +177,8 @@ class TempPlot(QtCore.QObject): # we inherit from QObject so we can emit signals
     self.do_pickle_data = True
     self.data_pickle_filename = ".TempLogger.plotdata.pickle"
     self.tempunits = "F"
-    self.colors = [ 'r', 'b', 'g', 'y' ]
+    self.colors = [ 'red', 'blue', 'green', 'yellow' ]
+    self.tempDispTemplate = '<div style="text-align: left"><span style="color: white;">Current Temps</span><br>%(temps)s</br></div>'
 
     if os.path.isfile( self.data_pickle_filename ):
       logging.info("pickled plot data exists, loading now")
@@ -243,9 +243,11 @@ class TempPlot(QtCore.QObject): # we inherit from QObject so we can emit signals
 
 
     # ad a text item to display current temperatures
-    self.tempDispHeader = '<div style="text-align: left"><span style="color: #FFF;">Current Temps</span></div>'
-    self.tempDisp = pg.TextItem( html=self.tempDispHeader, anchor=(1,0) )
+    text = self.tempDispTemplate
+    self.tempDisp = pg.TextItem( html=text, anchor=(1,0) )
     self.rplot.addItem( self.tempDisp )
+    self.tempDisp.setZValue(20)
+
 
 
 
@@ -302,6 +304,7 @@ class TempPlot(QtCore.QObject): # we inherit from QObject so we can emit signals
     self.data_changed.connect( self.plot )
     self.plotregion.sigRegionChanged.connect( updateZoomPlot )
     self.zplot.sigRangeChanged.connect( updateRegion )
+    self.rplot.sigRangeChanged.connect( self.displayCurrentTemps )
 
     # emit signal that will cause plot to update
     self.data_changed.emit()
@@ -334,19 +337,27 @@ class TempPlot(QtCore.QObject): # we inherit from QObject so we can emit signals
         self.plotcurves[name]['region'] = self.rplot.plot( name = name )
         self.plotcurves[name]['zoom']   = self.zplot.plot( name = name )
 
-      self.plotcurves[name]['region'].setData(x = self.data[name]['t'], y = self.data[name]['T'], pen=pg.mkPen( self.colors[i] ) )
-      self.plotcurves[name]['zoom'  ].setData(x = self.data[name]['t'], y = self.data[name]['T'], pen=pg.mkPen( self.colors[i] ) )
+      self.plotcurves[name]['region'].setData(x = self.data[name]['t'], y = self.data[name]['T'], pen=pg.mkPen( self.colors[i][0] ) )
+      self.plotcurves[name]['zoom'  ].setData(x = self.data[name]['t'], y = self.data[name]['T'], pen=pg.mkPen( self.colors[i][0] ) )
       i += 1
 
-    self.drawCurrentTemps()
+    self.displayCurrentTemps()
 
   def show(self):
     pass
 
 
-  def drawCurrentTemps(self):
+  def displayCurrentTemps(self):
+    temps  = ""
+    i = 0
+    for sensor in self.data:
+      T = self.data[sensor]['T'][-1]
+      temps = temps + '<br><span style="color:%(color)s">%(temp).2f<span></br>' % {'color' : self.colors[i], 'temp' : T}
+      i += 1
+    
+    text = self.tempDispTemplate % {'temps' : temps }
+    self.tempDisp.setHtml( text )
     view = self.rplot.viewRange()
-
     self.tempDisp.setPos( view[0][1], view[1][1] )
 
   def getMinTime(self):

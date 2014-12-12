@@ -5,4 +5,4 @@ load plot data from log file
 configurable window
 set command for setting properties
 display current temps on plot
-create a plot class
+add errors command
