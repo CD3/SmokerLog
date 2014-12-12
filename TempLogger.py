@@ -32,59 +32,6 @@ loglevel = logging.DEBUG
 
 logging.basicConfig(filename='TempLogger.log',level=loglevel, format='[%(levelname)s] (%(threadName)s) %(asctime)s - %(message)s')
 
-class DataExtractor:
-  def __init__(self, elem = None):
-    self.load(elem)
-  def dump(self):
-    print self.__dict__
-
-class Sensor(DataExtractor):
-  def load(self, elem):
-    if elem is not None:
-      cols = elem.xpath("td")
-
-      # columns
-      # 0 - serial number (plain text)
-      # 1 - name          (input element)
-      # 2 - temperature   (plain text)
-      # 3 - target temp   (input element)
-      # 4 - alarm         (select element)
-      # 5 - low set       (input element)
-      # 6 - high set      (input element)
-      # 7 - blower        (select element)
-      self.serial   =        cols[0].text.strip()
-      self.name     =        cols[1].xpath("input")[0].get("value").strip()
-      self.temp     = float( cols[2].text)
-      self.target   = float( cols[3].xpath("input")[0].get("value") )
-
-      self.low_set  = float( cols[5].xpath("input")[0].get("value") )
-      self.high_set = float( cols[6].xpath("input")[0].get("value") )
-      
-    else:
-      self.name = ""
-      self.serial = ""
-      self.temp = 0
-      self.target = 0
-      self.low_set = 0
-      self.high_set = 0
-
-class SystemInfo(DataExtractor):
-  def load(self, elem):
-    if elem is not None:
-      self.system = "Stoker"
-      info = elem.xpath("td/p")[0]
-
-      self.version = info.xpath("br")[1].tail
-      match = re.search( "(\d+\.*){1,4}", self.version )
-      if match:
-        self.version = match.group(0)
-      
-    else:
-      self.version = ""
-
-  def dump(self):
-    print self.__dict__
-
 
 
 
@@ -110,7 +57,60 @@ class IntermittentDataSource(DataSource):
     info = {'tempunits' : 'F' }
     return info
 
+
 class StokerWebSource( DataSource ):
+
+  class DataExtractor:
+    def __init__(self, elem = None):
+      self.load(elem)
+    def dump(self):
+      print self.__dict__
+
+  class Sensor(DataExtractor):
+    def load(self, elem):
+      if elem is not None:
+        cols = elem.xpath("td")
+
+        # columns
+        # 0 - serial number (plain text)
+        # 1 - name          (input element)
+        # 2 - temperature   (plain text)
+        # 3 - target temp   (input element)
+        # 4 - alarm         (select element)
+        # 5 - low set       (input element)
+        # 6 - high set      (input element)
+        # 7 - blower        (select element)
+        self.serial   =        cols[0].text.strip()
+        self.name     =        cols[1].xpath("input")[0].get("value").strip()
+        self.temp     = float( cols[2].text)
+        self.target   = float( cols[3].xpath("input")[0].get("value") )
+
+        self.low_set  = float( cols[5].xpath("input")[0].get("value") )
+        self.high_set = float( cols[6].xpath("input")[0].get("value") )
+        
+      else:
+        self.name = ""
+        self.serial = ""
+        self.temp = 0
+        self.target = 0
+        self.low_set = 0
+        self.high_set = 0
+
+  class SystemInfo(DataExtractor):
+    def load(self, elem):
+      if elem is not None:
+        self.system = "Stoker"
+        info = elem.xpath("td/p")[0]
+
+        self.version = info.xpath("br")[1].tail
+        match = re.search( "(\d+\.*){1,4}", self.version )
+        if match:
+          self.version = match.group(0)
+        
+      else:
+        self.version = ""
+
+
   def __init__(self, host):
 
     # html scraper
@@ -143,11 +143,10 @@ class StokerWebSource( DataSource ):
     tree   = etree.parse( StringIO(html), self.parser )
     (sysinfo_table, data_table, trash, trash) = tree.xpath("body/table/form/tr")
 
-    status = SystemInfo( sysinfo_table )
     sensors = list()
     rows = data_table.xpath("td/table/tr")
     for i in range(4,len(rows)-1):
-      sensors.append( Sensor( rows[i] ) )
+      sensors.append( self.Sensor( rows[i] ) )
 
     data = collections.OrderedDict()
     for sensor in sensors:
@@ -160,7 +159,6 @@ class StokerWebSource( DataSource ):
 
 # functions
 
-
 def epoch2humanTime( t ):
   return datetime.datetime( *time.localtime( t )[0:5] ).strftime( TempPlot.timefmt )
 
@@ -169,7 +167,6 @@ def epoch2humanTime( t ):
 # classes
 
 class TempPlot(QtCore.QObject): # we inherit from QObject so we can emit signals
-
   data_changed = QtCore.Signal( )
   timefmt = "%H:%M:%S"
 
@@ -376,7 +373,6 @@ class TempPlot(QtCore.QObject): # we inherit from QObject so we can emit signals
     self.data = collections.OrderedDict()
 
 class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signals
-
   new_data_read = QtCore.Signal( dict )
   timefmt = "%Y-%m-%d %H:%M:%S"
 
