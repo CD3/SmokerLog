@@ -32,8 +32,26 @@ loglevel = logging.DEBUG
 
 logging.basicConfig(filename='TempLogger.log',level=loglevel, format='[%(levelname)s] (%(threadName)s) %(asctime)s - %(message)s')
 
+#       _   _ _    __                  _   _                 
+# _   _| |_(_) |  / _|_   _ _ __   ___| |_(_) ___  _ __  ___ 
+#| | | | __| | | | |_| | | | '_ \ / __| __| |/ _ \| '_ \/ __|
+#| |_| | |_| | | |  _| |_| | | | | (__| |_| | (_) | | | \__ \
+# \__,_|\__|_|_| |_|  \__,_|_| |_|\___|\__|_|\___/|_| |_|___/
+                                                            
 
-# data sources
+
+def epoch2humanTime( t ):
+  return datetime.datetime( *time.localtime( t )[0:5] ).strftime( TempPlot.timefmt )
+
+
+
+#     _       _                                            
+#  __| | __ _| |_ __ _   ___  ___  _   _ _ __ ___ ___  ___ 
+# / _` |/ _` | __/ _` | / __|/ _ \| | | | '__/ __/ _ \/ __|
+#| (_| | (_| | || (_| | \__ \ (_) | |_| | | | (_|  __/\__ \
+# \__,_|\__,_|\__\__,_| |___/\___/ \__,_|_|  \___\___||___/
+                                                          
+
 
 class DataSource:
   def get_data(self):
@@ -156,14 +174,14 @@ class StokerWebSource( DataSource ):
 
 
 
-# functions
 
-def epoch2humanTime( t ):
-  return datetime.datetime( *time.localtime( t )[0:5] ).strftime( TempPlot.timefmt )
+#       _       _                     _   _                    _                         
+# _ __ | | ___ | |_    __ _ _ __   __| | | | ___   __ _    ___| | __ _ ___ ___  ___  ___ 
+#| '_ \| |/ _ \| __|  / _` | '_ \ / _` | | |/ _ \ / _` |  / __| |/ _` / __/ __|/ _ \/ __|
+#| |_) | | (_) | |_  | (_| | | | | (_| | | | (_) | (_| | | (__| | (_| \__ \__ \  __/\__ \
+#| .__/|_|\___/ \__|  \__,_|_| |_|\__,_| |_|\___/ \__, |  \___|_|\__,_|___/___/\___||___/
+#|_|                                              |___/                                  
 
-
-
-# classes
 
 class TempPlot(QtCore.QObject): # we inherit from QObject so we can emit signals
   data_changed = QtCore.Signal( )
@@ -180,6 +198,8 @@ class TempPlot(QtCore.QObject): # we inherit from QObject so we can emit signals
     self.colors = [ 'red', 'blue', 'green', 'yellow' ]
     self.tempDispTemplate = '<div style="text-align: left"><span style="color: white;">Current Temps</span><br>%(temps)s</br></div>'
 
+    self.plotregion = None
+
     if os.path.isfile( self.data_pickle_filename ):
       logging.info("pickled plot data exists, loading now")
       self.data = pickle.load( open( self.data_pickle_filename, "rb" ) )
@@ -190,8 +210,22 @@ class TempPlot(QtCore.QObject): # we inherit from QObject so we can emit signals
       self.data_changed.connect( self.pickle_data )
 
 
+  def get_data(self):
+    return self.data
 
+  def get_region_data(self):
+    if self.plotregion == None:
+      return None
 
+    regioned_data = collections.OrderedDict()
+    mint,maxt = self.plotregion.getRegion()
+    for sensor in self.data:
+      mini = numpy.searchsorted( self.data[sensor]['t'], mint )
+      maxi = numpy.searchsorted( self.data[sensor]['t'], maxt )
+      regioned_data[sensor] = { 't' : self.data[sensor]['t'][mini:maxi]
+                              , 'T' : self.data[sensor]['T'][mini:maxi] }
+
+    return regioned_data
 
 
 
@@ -246,7 +280,6 @@ class TempPlot(QtCore.QObject): # we inherit from QObject so we can emit signals
     text = self.tempDispTemplate
     self.tempDisp = pg.TextItem( html=text, anchor=(1,0) )
     self.rplot.addItem( self.tempDisp )
-    self.tempDisp.setZValue(20)
 
 
 
@@ -483,7 +516,13 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
 
 
 
-# commands
+#                                               _     
+#  ___ ___  _ __ ___  _ __ ___   __ _ _ __   __| |___ 
+# / __/ _ \| '_ ` _ \| '_ ` _ \ / _` | '_ \ / _` / __|
+#| (_| (_) | | | | | | | | | | | (_| | | | | (_| \__ \
+# \___\___/|_| |_| |_|_| |_| |_|\__,_|_| |_|\__,_|___/
+                                                     
+
 
 def quit(*args):
   logging.info( "shutting down..." )
@@ -510,17 +549,35 @@ def clear(*args):
 
 def stats(*args):
   stats = dict()
-  stats["Total"] = {}
-  for sensor in plot.data:
-    T = plot.data[sensor]['T']
 
-    stats["Total"][sensor] = {}
+  def calc_stats(t,T):
+    stats =  {}
     # we need to convert all calculations to float
-    stats["Total"][sensor]['current']  = float( max( T) )
-    stats["Total"][sensor]['max']      = float( max( T) )
-    stats["Total"][sensor]['min']      = float( min( T) )
-    stats["Total"][sensor]['avg']      = float( sum( T) / len( T ) )
-    stats["Total"][sensor]['stdev']    = float( math.sqrt( sum( (T - stats["Total"][sensor]['avg'])**2 ) ) )
+    stats['domain']    = "%s - %s" % ( epoch2humanTime( min( t) ), epoch2humanTime( max( t) ) )
+    stats['current']  = float( max( T) )
+    stats['max']      = float( max( T) )
+    stats['min']      = float( min( T) )
+    stats['avg']      = float( sum( T) / len( T ) )
+    stats['stdev']    = float( math.sqrt( sum( (T - stats['avg'])**2 ) ) )
+
+    return stats
+
+
+  stats["Total"] = {}
+  for sensor in plot.get_data():
+    t = plot.data[sensor]['t']
+    T = plot.data[sensor]['T']
+    stats["Total"][sensor] = calc_stats( t, T )
+
+  stats["Selected"] = {}
+  
+  region_data = plot.get_region_data()
+  if region_data:
+    for sensor in region_data:
+      t = region_data[sensor]['t']
+      T = region_data[sensor]['T']
+      stats["Selected"][sensor] = calc_stats( t, T )
+
 
   print yaml.dump( stats, default_flow_style=False )
 
@@ -539,58 +596,57 @@ commands = { "quit" : quit
 
 
 
+if __name__ == '__main__':
+
+  mainargparser = argparse.ArgumentParser()
+  mainargparser.add_argument("--host"           ,default="192.168.1.3" )
+  mainargparser.add_argument("--read_interval"  ,default=1.)
+  mainargparser.add_argument("--write_interval" ,default=1.)
+
+  args = mainargparser.parse_args(args = sys.argv[1:])
 
 
 
-mainargparser = argparse.ArgumentParser()
-mainargparser.add_argument("--host"           ,default="192.168.1.3" )
-mainargparser.add_argument("--read_interval"  ,default=1.)
-mainargparser.add_argument("--write_interval" ,default=1.)
+  datasource = StokerWebSource( args.host )
+  #datasource = DataSource( )
+  #datasource = IntermittentDataSource( )
+  templogger = TempLogger( datasource
+                         , read_interval  = float(args.read_interval)*units.min
+                         , write_interval = float(args.write_interval)*units.min )
 
-args = mainargparser.parse_args(args = sys.argv[1:])
+  threads = [] 
+  threads.append( threading.Thread( target = templogger.read_loop ) )
+  threads.append( threading.Thread( target = templogger.write_loop ) )
 
+  plot = TempPlot()
 
+  templogger.new_data_read.connect( plot.append_to_data )
 
-datasource = StokerWebSource( args.host )
-#datasource = DataSource( )
-#datasource = IntermittentDataSource( )
-templogger = TempLogger( datasource
-                       , read_interval  = float(args.read_interval)*units.min
-                       , write_interval = float(args.write_interval)*units.min )
-
-threads = [] 
-threads.append( threading.Thread( target = templogger.read_loop ) )
-threads.append( threading.Thread( target = templogger.write_loop ) )
-
-plot = TempPlot()
-
-templogger.new_data_read.connect( plot.append_to_data )
-
-for t in threads:
-  t.start()
+  for t in threads:
+    t.start()
 
 
 
-while 1:
-  input = shlex.split( raw_input('> ') )
-  if len(input) < 1:
-    continue
-  command = input.pop(0)
-  candidates = dpath.util.search( commands, command+"*" )
-  if len( candidates ) > 1:
-    print "'"+command+"' is ambiguous (did you mean "+ ', '.join( candidates.keys() )
-    continue
+  while 1:
+    input = shlex.split( raw_input('> ') )
+    if len(input) < 1:
+      continue
+    command = input.pop(0)
+    candidates = dpath.util.search( commands, command+"*" )
+    if len( candidates ) > 1:
+      print "'"+command+"' is ambiguous (did you mean "+ ', '.join( candidates.keys() )
+      continue
 
-  if len( candidates ) < 1:
-    print "'"+command+"' is not a recognized command."
-    print "commands:"
-    for command in commands.keys():
-      print "\t",command
-    continue
+    if len( candidates ) < 1:
+      print "'"+command+"' is not a recognized command."
+      print "commands:"
+      for command in commands.keys():
+        print "\t",command
+      continue
 
-  command = candidates.keys()[0]
+    command = candidates.keys()[0]
 
-  commands[command](*input)
+    commands[command](*input)
 
 
 
