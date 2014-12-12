@@ -88,11 +88,85 @@ class SystemInfo(DataExtractor):
 
 
 
+class DataSource:
+  def get_data(self):
+    '''Returns an ordered dict of temperature keyed on the sensor/probe name'''
+    return collections.OrderedDict( [ ('sens1', 80), ('sens2', 87) ] )
 
+  def get_info(self):
+    info = {'tempunits' : 'F' }
+    return info
+
+class IntermittentDataSource(DataSource):
+  iter = 0
+  def get_data(self):
+    self.iter += 1
+    if (self.iter%3) == 0: # drop every 3rd data
+      return None
+
+    return collections.OrderedDict( [ ('sens1', 30 + self.iter*2.), ('sens2', 40 + self.iter*1.1) ] )
+
+  def get_info(self):
+    info = {'tempunits' : 'F' }
+    return info
+
+class StokerWebSource( DataSource ):
+  def __init__(self, host):
+
+    # html scraper
+    self.host = host
+    self.parser = etree.HTMLParser()
+    self.url = "http://%(host)s" % {'host': self.host}
+    self.timeout = 5*units.second
+
+
+  def get_data(self):
+    try:
+      logging.debug("Requesting data from host (url: %s)" % self.url)
+      # get the status page
+      page = requests.get(self.url, timeout=self.timeout.to(units.second).magnitude)
+      # raise an exception for error codes
+      page.raise_for_status()
+      # get the raw html to parse
+      html = page.text
+
+    except requests.exceptions.Timeout, e:
+      logging.debug( "Request timed out. Will try again later. If this keeps happening, check that the host is up.")
+      return None
+
+    except Exception, e:
+      logging.debug( "Exception occured while requesting data: '%s'" % e.message )
+      logging.debug( "Will try again later")
+      return None
+
+
+    tree   = etree.parse( StringIO(html), self.parser )
+    (sysinfo_table, data_table, trash, trash) = tree.xpath("body/table/form/tr")
+
+    status = SystemInfo( sysinfo_table )
+    sensors = list()
+    rows = data_table.xpath("td/table/tr")
+    for i in range(4,len(rows)-1):
+      sensors.append( Sensor( rows[i] ) )
+
+    data = collections.OrderedDict()
+    for sensor in sensors:
+      data[sensor.name] = sensor.temp
+
+    return data
+
+
+
+
+# functions
 
 
 def epoch2humanTime( t ):
   return datetime.datetime( *time.localtime( t )[0:5] ).strftime( TempPlot.timefmt )
+
+
+
+# classes
 
 class TempPlot(QtCore.QObject): # we inherit from QObject so we can emit signals
 
@@ -113,7 +187,7 @@ class TempPlot(QtCore.QObject): # we inherit from QObject so we can emit signals
       logging.info("pickled plot data exists, loading now")
       self.data = pickle.load( open( self.data_pickle_filename, "rb" ) )
     else:
-      self.init_data
+      self.init_data()
 
     if self.do_pickle_data:
       self.data_changed.connect( self.pickle_data )
@@ -279,10 +353,16 @@ class TempPlot(QtCore.QObject): # we inherit from QObject so we can emit signals
     self.tempDisp.setPos( view[0][1], view[1][1] )
 
   def getMinTime(self):
-    return min( [ min(self.data[sensor]['t']) for sensor in self.data ] )
+    if len( self.data ) == 0:
+      return 0
+    else:
+      return min( [ min(self.data[sensor]['t']) for sensor in self.data ] )
 
   def getMaxTime(self):
-    return max( [ max(self.data[sensor]['t']) for sensor in self.data ] )
+    if len( self.data ) == 0:
+      return 0
+    else:
+      return max( [ max(self.data[sensor]['t']) for sensor in self.data ] )
 
 
   def pickle_data(self):
@@ -295,25 +375,22 @@ class TempPlot(QtCore.QObject): # we inherit from QObject so we can emit signals
   def init_data(self):
     self.data = collections.OrderedDict()
 
-
-
-
 class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signals
 
   new_data_read = QtCore.Signal( dict )
   timefmt = "%Y-%m-%d %H:%M:%S"
 
-  def __init__(self, host, prefix = "default", read_interval = 1.*units.min, write_interval = 1.*units.min):
+  def __init__(self, source, prefix = "default", read_interval = 1.*units.min, write_interval = 1.*units.min):
     super(TempLogger,self).__init__()
 
     # state information
     self.start = datetime.datetime.now()
     
-    # html scraper
-    self.parser = etree.HTMLParser()
-    self.host = host
-    self.url = "http://%(host)s" % {'host': self.host}
-    self.timeout = 5*units.second
+    # data source
+    self.data_source = source
+    
+    info = self.data_source.get_info()
+    self.tempunits = info['tempunits']
 
     # configuration
     self.prefix = prefix
@@ -321,7 +398,6 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
     self.read_stop = threading.Event()
     self.write_interval = write_interval
     self.write_stop = threading.Event()
-    self.tempunits = "F"
 
     # data
     self.cache = collections.deque()
@@ -349,41 +425,14 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
 
   def read(self):
     btime = datetime.datetime.now()
-    try:
-      logging.debug("Requesting data from host (url: %s)" % self.url)
-      # get the status page
-      page = requests.get(self.url, timeout=self.timeout.to(units.second).magnitude)
-      # raise an exception for error codes
-      page.raise_for_status()
-      # get the raw html to parse
-      html = page.text
-
-    except requests.exceptions.Timeout, e:
-      logging.debug( "Request timed out. Will try again later. If this keeps happening, check that the host is up.")
-      return
-
-    except Exception, e:
-      logging.debug( "Exception occured while requesting data: '%s'" % e.message )
-      logging.debug( "Will try again later")
+    temps = self.data_source.get_data()
+    if temps == None:
       return
 
     etime = datetime.datetime.now()
 
-    tree   = etree.parse( StringIO(html), self.parser )
-    (sysinfo_table, data_table, trash, trash) = tree.xpath("body/table/form/tr")
-
-    status = SystemInfo( sysinfo_table )
-    sensors = list()
-    rows = data_table.xpath("td/table/tr")
-    for i in range(4,len(rows)-1):
-      sensors.append( Sensor( rows[i] ) )
-
     data = { "time"    : etime.strftime( self.timefmt )
-           , "sensors" : collections.OrderedDict() }
-
-    for sensor in sensors:
-      data["sensors"][sensor.name] = sensor.temp
-
+           , "sensors" : temps }
 
     self.new_data_read.emit( data )
 
@@ -453,7 +502,6 @@ def clear(*args):
   plot.clear()
 
 def stats(*args):
-  
   stats = dict()
   stats["Total"] = {}
   for sensor in plot.data:
@@ -496,9 +544,12 @@ args = mainargparser.parse_args(args = sys.argv[1:])
 
 
 
-templogger = TempLogger( args.host
-                   , read_interval  = float(args.read_interval)*units.min
-                   , write_interval = float(args.write_interval)*units.min )
+datasource = StokerWebSource( args.host )
+#datasource = DataSource( )
+#datasource = IntermittentDataSource( )
+templogger = TempLogger( datasource
+                       , read_interval  = float(args.read_interval)*units.min
+                       , write_interval = float(args.write_interval)*units.min )
 
 threads = [] 
 threads.append( threading.Thread( target = templogger.read_loop ) )
