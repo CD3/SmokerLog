@@ -1,5 +1,5 @@
 *.swp
 *.pyc
 default*txt
-TempLogger.log
-.TempLogger.*.pickle
+SmokerLog.log
+.Temp*.*.pickle

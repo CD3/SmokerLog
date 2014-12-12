@@ -1,5 +1,4 @@
 
-from PySide import QtCore
 from .Units import *
 
 import datetime
@@ -73,8 +72,8 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
            , "sensors" : temps }
 
 
-    self.new_data_read.emit( data )
 
+    self.new_data_read.emit( data )
 
   def write(self):
     logging.debug("Writing %d items in data cache to file." % len(self.cache))
@@ -84,8 +83,6 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
         filename = "%s-%s.txt" % (self.prefix,name)
         with open( filename, 'a' ) as f:
           f.write( "%s %s\n" % (item["time"],temp) )
-
-
 
   def log_event(self, event, time = None):
     if time is None:

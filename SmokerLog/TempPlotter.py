@@ -1,6 +1,7 @@
 
-from PySide import QtCore
 from .Units import *
+from .Utils import *
+from TempLogger import TempLogger
 
 import pyqtgraph as pg
 import logging
@@ -180,8 +181,7 @@ class TempPlotter(QtCore.QObject): # we inherit from QObject so we can emit sign
   def append_to_data( self, data ):
     # data contains all of the time-temperature history data points that will be
     # plotted. we store a seprate time-temperature pair for every sensor.
-    print "BAM"
-    t = datetime.datetime.strptime( data["time"], TempLogger.timefmt )
+    t = strptime( data["time"], TempLogger.timefmt )
     for name in data["sensors"]:
       if not name in self.data:
         self.data[name] = { 't' : numpy.array([]), 'T' : numpy.array([]) }
