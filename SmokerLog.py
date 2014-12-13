@@ -103,9 +103,11 @@ class Main(QtCore.QObject):
 #                   |_|              |___/ |___/           
 
     # create the data source
-    datasource = StokerWebSource( args.host )
-    #datasource = DataSource( )
-    #datasource = IntermittentDataSource( )
+    if args.debug:
+      #datasource = DataSource( )
+      datasource = IntermittentDataSource( )
+    else:
+      datasource = StokerWebSource( args.host )
     # the temperature logger
     self.templogger = TempLogger( datasource
                                 , read_interval  = float(args.read_interval)*units.min )
@@ -190,7 +192,7 @@ class Main(QtCore.QObject):
 
     if len( candidates ) < 1:
       print "'"+command+"' is not a recognized command."
-      help()
+      command_help()
       self.trigger_input_read.emit()
       return
 
