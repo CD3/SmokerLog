@@ -37,7 +37,7 @@ class InputReader(QtCore.QObject):
 
   def read_input(self):
     logging.debug("reading input from user")
-    input = raw_input('> ')
+    input = raw_input('smokerlog> ')
     self.input_available.emit( input )
 
 
