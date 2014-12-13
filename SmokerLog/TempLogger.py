@@ -45,17 +45,14 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
     self.new_data_read.connect( self.append_to_cache )  # make sure data is appended to cache as it is read
     self.read_timer.timeout.connect( self.read )        # trigger a read on a regular basis
 
-    def test():
-      print "timeout WAS emitted"
-    self.read_timer.timeout.connect( test )
-
 
   def start_reading(self):
     logging.debug("starting read timer")
     self.read_timer.start()
 
+
+
   def read(self):
-    print "APPEND"
     logging.debug("retrieving data from source")
     btime = datetime.datetime.now()
     temps = self.data_source.get_data()

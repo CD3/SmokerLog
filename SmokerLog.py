@@ -6,7 +6,6 @@ from SmokerLog.TempLogger import *
 from SmokerLog.TempPlotter import *
 from SmokerLog.DataSources.StokerWebSource import *
 
-import threading
 import sys
 import dpath.util
 import argparse
@@ -24,11 +23,32 @@ import readline
 
 
 
+# a class for getting user input.
+# we need to create a class so we can put the object in its own thread
+class InputReader(QtCore.QObject):
+  input_available = QtCore.Signal( str )
+  
+  def __init__(self):
+    super(InputReader,self).__init__()
+
+    # configure the readline library
+    readline.parse_and_bind('tab: complete')
+    readline.parse_and_bind('set editing-mode vi') # most important option. allows vi style command line editing
+
+  def read_input(self):
+    logging.debug("reading input from user")
+    input = raw_input('> ')
+    self.input_available.emit( input )
+
+
+
 
 
 class Main(QtCore.QObject):
   finished = QtCore.Signal()
   started = QtCore.Signal()
+
+  trigger_input_read = QtCore.Signal()
 
   def __init__(self,argv):
     super(Main,self).__init__()
@@ -42,7 +62,7 @@ class Main(QtCore.QObject):
 
     # set configuration options
 
-    logfilename = "SmokerLog.log"
+    self.logfilename = "SmokerLog.log"
 
     if args.debug:
       loglevel = logging.DEBUG
@@ -51,7 +71,7 @@ class Main(QtCore.QObject):
 
 
     # configure logger
-    logging.basicConfig(filename=logfilename
+    logging.basicConfig(filename=self.logfilename
                        ,level=loglevel
                        , format='[%(levelname)s] (%(threadName)s) %(asctime)s - %(message)s')
 
@@ -61,72 +81,104 @@ class Main(QtCore.QObject):
     #datasource = StokerWebSource( args.host )
     #datasource = DataSource( )
     datasource = IntermittentDataSource( )
-    # create the temperature logger
+    # the temperature logger
     self.templogger = TempLogger( datasource
                                 , read_interval  = float(args.read_interval)*units.min )
 
-    # create the temperature plotter
+    # the temperature plotter
     self.plot = TempPlotter()
+
 
     # connect plot slot to logger signal so plot will be updated as new data is available
     self.templogger.new_data_read.connect( self.plot.append_to_data )
 
 
-    # configure the readline library
-    readline.parse_and_bind('tab: complete')
-    readline.parse_and_bind('set editing-mode vi') # most important option. allows vi style command line editing
-
-    # set the running flag to false
-    self.running = False
-
-
 
   def run(self):
-    # create a thread to run the logger in
-    #readwrite_thread = QtCore.QThread()
-    #readwrite_thread.start()
-    ## move the logger to the thread
-    #templogger.moveToThread( readwrite_thread )
-    #readwrite_thread.finished.connect( app.quit )
+
+    # we are creating a loop here, but it is not immediatly obvious how.
+    # in order to keep the user console from blocking the main event loop, we
+    # need to have it run in its own thread. so, we will create an instance of the
+    # InputReader class and move it to a thread.
+    # 
+    # we could have the input reader just run a loop to get user input and emit signals
+    # with each input. however, this will cause problems with how the prompt is displayed becasue
+    # user commands will print to the console as well.
+    #
+    # instead, we will put the input reader into its own thread and then call the read_input member.
+    # this member will wait for user input, then emit a singnal when some is recieved and return. (i.e. NOT loop)
+    # we connect our process_command slot to the signal that is emitted to handle the input.
+    # after the process_command function processes the data, it calls read_input member on the input reader.
+    # 
+    # the complication comes from the fact that we can't just call the read_input member, because functions
+    # get ran in the thread of the caller. so, we instead have to emit a signal that will trigger the read_input
+    # function to be ran. the signal will be recieved by the object and the member will be ran in the thread
+    # that owns the object
+    #
+    # all righty then...
+
+    self.inputreader = InputReader()                                 # create the input reader
+    self.inputreader.input_available.connect( self.process_command ) # connect input reader to the command processor
+
+    self.input_thread = QtCore.QThread()                             # create a thread to run the input reader to run in
+    self.inputreader.moveToThread( self.input_thread )               # move the logger to the thread
+    self.trigger_input_read.connect( self.inputreader.read_input )   # connect the thread's start signal to the input readers command prompt loop
+    self.finished.connect( self.input_thread.quit )                  # connect our finish signal to the threads quit slot so the thread will be terminated when quit
+
+
+
 
     # start reading data
     self.templogger.start_reading()
 
-    # start command prompt loop
-    self.running = True
-    while self.running:
-      # get user input
-      input = shlex.split( raw_input('> ') )
+    self.input_thread.start()    # start the user input thread
+    self.process_command("help") # kick off the input loop by processing the "help" command
 
-      # give new prompt if user not text was given
-      if len(input) < 1:
-        continue
 
-      # get command
-      command = input.pop(0)
-      # find the command (we support command abbreviations)
-      candidates = filter( lambda x: re.match( "command_%s.*"%command, x) , dir(self) )
 
-      if len( candidates ) > 1:
-        print "'%s' is ambiguous" % command
-        print "matching commands:"
-        for command in candidates:
-          print "\t%s" % command.replace("command_","")
+  def process_command(self,input):
+    input = shlex.split(input)
 
-        continue
+    # don't do anything on blank input
+    if len(input) < 1:
+      self.trigger_input_read.emit()
+      return
 
-      if len( candidates ) < 1:
-        print "'"+command+"' is not a recognized command."
-        help()
-        continue
+    # get command
+    command = input.pop(0)
+    # find the command (we support command abbreviations)
+    candidates = filter( lambda x: re.match( "command_%s.*"%command, x) , dir(self) )
 
-      command = candidates[0]
+    if len( candidates ) > 1:
+      print "'%s' is ambiguous" % command
+      print "matching commands:"
+      for command in candidates:
+        print "\t%s" % command.replace("command_","")
 
-      getattr( self, command)(*input)
+      self.trigger_input_read.emit()
+      return
 
-    # make sure to emit the finished signal
-    self.finished.emit()
+    if len( candidates ) < 1:
+      print "'"+command+"' is not a recognized command."
+      help()
+      self.trigger_input_read.emit()
+      return
+
+    command = candidates[0]
+
+    getattr( self, command)(*input)
+
+    # read another command
+    self.trigger_input_read.emit()
+    return
+
                                                        
+  
+  def quit(self):
+    self.finished.emit()
+    # wait for threads to exit
+    self.input_thread.wait()
+    
 
 
   #                                               _     
@@ -139,7 +191,7 @@ class Main(QtCore.QObject):
   def command_quit(self,*args):
     logging.info( "shutting down..." )
     self.templogger.read_timer.stop()
-    self.running = False
+    self.quit()
 
   def command_log(self,*args):
     for event in args:
@@ -149,7 +201,7 @@ class Main(QtCore.QObject):
     self.plot.display()
 
   def command_status(self,*args):
-    print "Number of active threads: %d" % threading.active_count()
+    #print "Number of active threads: %d" % threading.active_count()
     print "Run time: %s"                 % (datetime.datetime.now() - self.templogger.start)
     print "Last read time: %s"           % fmtEpoch( self.plot.getMaxTime(), self.plot.timefmt )
     self.templogger.print_status()
@@ -204,7 +256,7 @@ class Main(QtCore.QObject):
     myargs = myargparser.parse_args(args = args)
 
     # get all logged messages
-    with open( logfilename, 'r' ) as f:
+    with open( self.logfilename, 'r' ) as f:
       msgs = dict()
       for line in f:
         line = line.strip()
@@ -263,14 +315,15 @@ class Main(QtCore.QObject):
 if __name__ == '__main__':
 
   # create the main event loop
-  app = QtCore.QCoreApplication([])
+  app = QtCore.QCoreApplication(sys.argv)
 
   # create the main class
   main = Main(sys.argv)
+
+  # connect our main class's finished signal to the event loop's exit function
   main.finished.connect( app.exit )
 
-  # start running the main class in 10 ms
-
+  # start running the main class 10 ms after event loop starts
   QtCore.QTimer.singleShot( 10, main.run )
 
   sys.exit( app.exec_() )
