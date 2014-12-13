@@ -1,7 +1,4 @@
 add qt interface
-add readline for command line iterface
 calibration curves
 load plot data from log file
-configurable window
 set command for setting properties
-add errors command
