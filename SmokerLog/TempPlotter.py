@@ -65,6 +65,7 @@ class TempPlotter(QtCore.QObject): # we inherit from QObject so we can emit sign
 
   def display(self):
 
+    logging.debug( "setting up plot window for display" )
     # create the plot window and set it's title
     self.plotwin = pg.GraphicsWindow()
     self.plotwin.setWindowTitle("Temperature Logs")
@@ -94,7 +95,7 @@ class TempPlotter(QtCore.QObject): # we inherit from QObject so we can emit sign
         # PySide's QTime() initialiser fails miserably and dismisses args/kwargs
         # times will be in number of seconds since...
         # need to convert this to a tuple, create a datetime object, and output it in the correct format
-        return [ fmtEpoch( value, self.timefmt ) for value in values]
+        return [ fmtEpoch( value, TempPlotter.timefmt ) for value in values]
 
 
     axis.tickStrings = types.MethodType( dateTickStrings, axis )

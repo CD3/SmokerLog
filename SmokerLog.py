@@ -345,7 +345,8 @@ class Main(QtCore.QObject):
 if __name__ == '__main__':
 
   # create the main event loop
-  app = QtCore.QCoreApplication(sys.argv)
+  # we can't use QCoreApplication here becasue pyqtgraph will be creating qt windows and widgets
+  app = QtGui.QApplication(sys.argv)
 
   # create the main class
   main = Main(sys.argv)
@@ -356,4 +357,6 @@ if __name__ == '__main__':
   # start running the main class 10 ms after event loop starts
   QtCore.QTimer.singleShot( 10, main.run )
 
+  app.setQuitOnLastWindowClosed(False)
+  
   sys.exit( app.exec_() )
