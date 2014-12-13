@@ -181,6 +181,7 @@ class TempPlotter(QtCore.QObject): # we inherit from QObject so we can emit sign
   def append_to_data( self, data ):
     # data contains all of the time-temperature history data points that will be
     # plotted. we store a seprate time-temperature pair for every sensor.
+    logging.debug( "appending data to plot data")
     t = strptime( data["time"], TempLogger.timefmt )
     for name in data["sensors"]:
       if not name in self.data:

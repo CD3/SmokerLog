@@ -13,7 +13,7 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
   new_data_read = QtCore.Signal( dict )
   timefmt = "%Y-%m-%d %H:%M:%S"
 
-  def __init__(self, source, prefix = "default", read_interval = 1.*units.min, write_interval = 1.*units.min):
+  def __init__(self, source, prefix = "default", read_interval = 1.*units.min, cache_buffer_size = 10 ):
     super(TempLogger,self).__init__()
     logging.debug("constructing %s instance" % self.__class__.__name__)
 
@@ -29,9 +29,12 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
     # configuration
     self.prefix = prefix
     self.read_interval = read_interval
-    self.read_stop = threading.Event()
-    self.write_interval = write_interval
-    self.write_stop = threading.Event()
+    self.cache_buffer_size = cache_buffer_size
+
+    # read timer
+    self.read_timer = QtCore.QTimer()
+    self.read_timer.setInterval( self.read_interval.to( units.millisecond ).magnitude )
+
 
     # data
     self.cache = collections.deque()
@@ -39,26 +42,20 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
  
     # connect signals
     logging.debug("[%s] connecting signals/slots" % self.__class__.__name__)
-    self.new_data_read.connect( self.append_to_cache )
+    self.new_data_read.connect( self.append_to_cache )  # make sure data is appended to cache as it is read
+    self.read_timer.timeout.connect( self.read )        # trigger a read on a regular basis
+
+    def test():
+      print "timeout WAS emitted"
+    self.read_timer.timeout.connect( test )
 
 
-  def read_loop(self):
-    self.read_stop.clear()
-    while not self.read_stop.is_set():
-      self.read()
-      self.read_stop.wait( self.read_interval.to( units.second ).magnitude )
-
-  def write_loop(self):
-    self.write_stop.clear()
-    while not self.write_stop.is_set():
-      self.write()
-      self.write_stop.wait( self.write_interval.to( units.second ).magnitude )
-
-  def stop_loops(self):
-    self.read_stop.set()
-    self.write_stop.set()
+  def start_reading(self):
+    logging.debug("starting read timer")
+    self.read_timer.start()
 
   def read(self):
+    print "APPEND"
     logging.debug("retrieving data from source")
     btime = datetime.datetime.now()
     temps = self.data_source.get_data()
@@ -84,6 +81,13 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
         with open( filename, 'a' ) as f:
           f.write( "%s %s\n" % (item["time"],temp) )
 
+  def append_to_cache( self, data ):
+    # the cache is used to write data to file
+    logging.debug("appending data to cache")
+    self.cache.append(data)
+    if len( self.cache ) >= self.cache_buffer_size:
+      self.write()
+
   def log_event(self, event, time = None):
     if time is None:
       time = datetime.datetime.now()
@@ -91,16 +95,9 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
     with open( filename, 'a' ) as f:
       f.write( "%s '%s'\n" % (str(time),event) )
 
-  def append_to_cache( self, data ):
-    print "APPEND"
-    # the cache is used to write data to file
-    logging.debug("appending data to cache")
-    self.cache.append(data)
-
   def print_status(self):
     print "data source: %s" % self.data_source
     print "read interval: %s" % self.read_interval
-    print "write interval: %s" % self.write_interval
 
   def clear(self):
     self.cache.clear()
