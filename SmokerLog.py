@@ -49,6 +49,7 @@ class Main(QtCore.QObject):
   started = QtCore.Signal()
 
   trigger_input_read = QtCore.Signal()
+  trigger_temp_reading = QtCore.Signal()
 
   def __init__(self,argv):
     super(Main,self).__init__()
@@ -77,6 +78,30 @@ class Main(QtCore.QObject):
 
 
 
+#          _                 _                   _                        _           
+# ___  ___| |_ _   _ _ __   (_)_ __  _ __  _   _| |_   _ __ ___  __ _  __| | ___ _ __ 
+#/ __|/ _ \ __| | | | '_ \  | | '_ \| '_ \| | | | __| | '__/ _ \/ _` |/ _` |/ _ \ '__|
+#\__ \  __/ |_| |_| | |_) | | | | | | |_) | |_| | |_  | | |  __/ (_| | (_| |  __/ |   
+#|___/\___|\__|\__,_| .__/  |_|_| |_| .__/ \__,_|\__| |_|  \___|\__,_|\__,_|\___|_|   
+#                   |_|             |_|                                               
+
+    self.inputreader = InputReader()                                 # create the input reader
+    self.inputreader.input_available.connect( self.process_command ) # connect input reader to the command processor
+
+    self.input_thread = QtCore.QThread(self)                         # create a thread to run the input reader to run in
+    self.inputreader.moveToThread( self.input_thread )               # move the logger to the thread
+    self.trigger_input_read.connect( self.inputreader.read_input )   # connect the thread's start signal to the input readers command prompt loop
+    self.finished.connect( self.input_thread.quit )                  # connect our finish signal to the threads quit slot so the thread will be terminated when quit
+
+
+
+#          _                 _                             
+# ___  ___| |_ _   _ _ __   | | ___   __ _  __ _  ___ _ __ 
+#/ __|/ _ \ __| | | | '_ \  | |/ _ \ / _` |/ _` |/ _ \ '__|
+#\__ \  __/ |_| |_| | |_) | | | (_) | (_| | (_| |  __/ |   
+#|___/\___|\__|\__,_| .__/  |_|\___/ \__, |\__, |\___|_|   
+#                   |_|              |___/ |___/           
+
     # create the data source
     #datasource = StokerWebSource( args.host )
     #datasource = DataSource( )
@@ -85,11 +110,23 @@ class Main(QtCore.QObject):
     self.templogger = TempLogger( datasource
                                 , read_interval  = float(args.read_interval)*units.min )
 
+
+    self.templog_thread = QtCore.QThread(self)
+    self.templogger.moveToThread( self.templog_thread )
+    self.trigger_temp_reading.connect( self.templogger.start_reading )
+    self.finished.connect( self.templog_thread.quit )
+
+
+#          _                       _       _   _            
+# ___  ___| |_ _   _ _ __    _ __ | | ___ | |_| |_ ___ _ __ 
+#/ __|/ _ \ __| | | | '_ \  | '_ \| |/ _ \| __| __/ _ \ '__|
+#\__ \  __/ |_| |_| | |_) | | |_) | | (_) | |_| ||  __/ |   
+#|___/\___|\__|\__,_| .__/  | .__/|_|\___/ \__|\__\___|_|   
+#                   |_|     |_|                             
+
+
     # the temperature plotter
     self.plot = TempPlotter()
-
-
-    # connect plot slot to logger signal so plot will be updated as new data is available
     self.templogger.new_data_read.connect( self.plot.append_to_data )
 
 
@@ -115,21 +152,14 @@ class Main(QtCore.QObject):
     # function to be ran. the signal will be recieved by the object and the member will be ran in the thread
     # that owns the object
     #
+    # P.S. input reader and thread initialization has been moved to the constructor
+    #
     # all righty then...
-
-    self.inputreader = InputReader()                                 # create the input reader
-    self.inputreader.input_available.connect( self.process_command ) # connect input reader to the command processor
-
-    self.input_thread = QtCore.QThread()                             # create a thread to run the input reader to run in
-    self.inputreader.moveToThread( self.input_thread )               # move the logger to the thread
-    self.trigger_input_read.connect( self.inputreader.read_input )   # connect the thread's start signal to the input readers command prompt loop
-    self.finished.connect( self.input_thread.quit )                  # connect our finish signal to the threads quit slot so the thread will be terminated when quit
-
-
 
 
     # start reading data
-    self.templogger.start_reading()
+    self.templog_thread.start()    # start temp logger
+    self.trigger_temp_reading.emit()    # start reading data
 
     self.input_thread.start()    # start the user input thread
     self.process_command("help") # kick off the input loop by processing the "help" command
