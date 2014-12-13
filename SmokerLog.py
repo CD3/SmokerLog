@@ -103,9 +103,9 @@ class Main(QtCore.QObject):
 #                   |_|              |___/ |___/           
 
     # create the data source
-    #datasource = StokerWebSource( args.host )
+    datasource = StokerWebSource( args.host )
     #datasource = DataSource( )
-    datasource = IntermittentDataSource( )
+    #datasource = IntermittentDataSource( )
     # the temperature logger
     self.templogger = TempLogger( datasource
                                 , read_interval  = float(args.read_interval)*units.min )
