@@ -17,6 +17,7 @@ import numpy
 import math
 import yaml
 import readline
+import inspect
 
 
 
@@ -192,8 +193,8 @@ class Main(QtCore.QObject):
       return
 
     if len( candidates ) < 1:
-      print "'"+command+"' is not a recognized command."
-      command_help()
+      print "'%s' is not a recognized command." % command
+      self.command_help()
       self.trigger_input_read.emit()
       return
 
@@ -224,20 +225,57 @@ class Main(QtCore.QObject):
   def command_quit(self,*args):
     '''Quit the application, making sure that all threads have been cleaned up.'''
     logging.info( "shutting down..." )
+    me  = inspect.stack()[0][3]
+    cmd = me.replace("command_","")
+    doc = getattr(self,me).__doc__
+    myargparser = argparse.ArgumentParser(prog=cmd, description=doc)
+    try:
+      myargs = myargparser.parse_args(args = args)
+    except SystemExit:
+      return
+
     self.templogger.read_timer.stop()
     self.quit()
 
   def command_log(self,*args):
     '''Log a string. The string is timestamped and written to file.'''
-    for event in args:
+    me  = inspect.stack()[0][3]
+    cmd = me.replace("command_","")
+    doc = getattr(self,me).__doc__
+    myargparser = argparse.ArgumentParser(prog=cmd, description=doc)
+    myargparser.add_argument("events", nargs="+")
+    try:
+      myargs = myargparser.parse_args(args = args)
+    except SystemExit:
+      return
+
+    for event in myargs.events:
       self.templogger.log_event(event)
 
   def command_plot(self,*args):
     '''Display an interactive plot of the recorded temperatures'''
+    me  = inspect.stack()[0][3]
+    cmd = me.replace("command_","")
+    doc = getattr(self,me).__doc__
+    myargparser = argparse.ArgumentParser(prog=cmd, description=doc)
+    try:
+      myargs = myargparser.parse_args(args = args)
+    except SystemExit:
+      return
+
     self.plot.display()
 
   def command_status(self,*args):
     '''Print status information.'''
+    me  = inspect.stack()[0][3]
+    cmd = me.replace("command_","")
+    doc = getattr(self,me).__doc__
+    myargparser = argparse.ArgumentParser(prog=cmd, description=doc)
+    try:
+      myargs = myargparser.parse_args(args = args)
+    except SystemExit:
+      return
+
     #print "Number of active threads: %d" % threading.active_count()
     print "user input thread: %s"        % (  "active" if self.input_thread.isRunning() else "inactive" )
     print "temp logger thread: %s"       % (  "active" if self.templog_thread.isRunning() else "inactive" )
@@ -247,11 +285,29 @@ class Main(QtCore.QObject):
 
   def command_clear(self,*args):
     '''Clear all logged data. This will clear a plot.'''
+    me  = inspect.stack()[0][3]
+    cmd = me.replace("command_","")
+    doc = getattr(self,me).__doc__
+    myargparser = argparse.ArgumentParser(prog=cmd, description=doc)
+    try:
+      myargs = myargparser.parse_args(args = args)
+    except SystemExit:
+      return
+
     self.templogger.clear()
     self.plot.clear()
 
   def command_stats(self,*args):
     '''Compute and print some statistics of the recoreded temperatures (avg, min, max, etc.)'''
+    me  = inspect.stack()[0][3]
+    cmd = me.replace("command_","")
+    doc = getattr(self,me).__doc__
+    myargparser = argparse.ArgumentParser(prog=cmd, description=doc)
+    try:
+      myargs = myargparser.parse_args(args = args)
+    except SystemExit:
+      return
+
     stats = dict()
 
     def calc_stats(t,T):
@@ -287,7 +343,16 @@ class Main(QtCore.QObject):
     print yaml.dump( stats, default_flow_style=False )
 
   def command_dump(self,*args):
-    '''Print a data dump of the recorded data'''
+    '''Print a data dump of the recorded data.'''
+    me  = inspect.stack()[0][3]
+    cmd = me.replace("command_","")
+    doc = getattr(self,me).__doc__
+    myargparser = argparse.ArgumentParser(prog=cmd, description=doc)
+    try:
+      myargs = myargparser.parse_args(args = args)
+    except SystemExit:
+      return
+
     pprint.pprint( self.plot.data )
 
   def command_msg(self,*args):
@@ -295,9 +360,15 @@ class Main(QtCore.QObject):
     if len(args) < 1:
       args = ('all',)
 
-    myargparser = argparse.ArgumentParser()
-    myargparser.add_argument("type", default="all")
-    myargs = myargparser.parse_args(args = args)
+    me  = inspect.stack()[0][3]
+    cmd = me.replace("command_","")
+    doc = getattr(self,me).__doc__
+    myargparser = argparse.ArgumentParser(prog=cmd, description=doc)
+    try:
+      myargs = myargparser.parse_args(args = args)
+    except SystemExit:
+      return
+
 
     # get all logged messages
     with open( self.logfilename, 'r' ) as f:
@@ -336,10 +407,16 @@ class Main(QtCore.QObject):
 
   def command_set(self,*args):
     '''Set the value of a configuration option.'''
-    myargparser = argparse.ArgumentParser()
+    me  = inspect.stack()[0][3]
+    cmd = me.replace("command_","")
+    doc = getattr(self,me).__doc__
+    myargparser = argparse.ArgumentParser(prog=cmd, description=doc)
     myargparser.add_argument("option" )
     myargparser.add_argument("value" )
-    myargs = myargparser.parse_args(args = args)
+    try:
+      myargs = myargparser.parse_args(args = args)
+    except SystemExit:
+      return
 
     logging.debug( "setting '%s' to '%s'" % ( myargs.option, myargs.value ) )
 
@@ -347,6 +424,15 @@ class Main(QtCore.QObject):
 
   def command_help(self,*args):
     '''This output.'''
+    me  = inspect.stack()[0][3]
+    cmd = me.replace("command_","")
+    doc = getattr(self,me).__doc__
+    myargparser = argparse.ArgumentParser(prog=cmd, description=doc)
+    try:
+      myargs = myargparser.parse_args(args = args)
+    except SystemExit:
+      return
+
     commands = filter( lambda x: re.match( "command_.*", x) , dir(self) )
     print "commands:"
     for command in sorted(commands):
@@ -355,9 +441,15 @@ class Main(QtCore.QObject):
 
   def command_print(self,*args):
     '''Print the value of a configuration option or tree'''
-    myargparser = argparse.ArgumentParser()
+    me  = inspect.stack()[0][3]
+    cmd = me.replace("command_","")
+    doc = getattr(self,me).__doc__
+    myargparser = argparse.ArgumentParser(prog=cmd, description=doc)
     myargparser.add_argument("option", nargs="?", default="all" )
-    myargs = myargparser.parse_args(args = args)
+    try:
+      myargs = myargparser.parse_args(args = args)
+    except SystemExit:
+      return
 
     if not self.config.isValid( myargs.option ) and myargs.option != "all":
       print "'%s' does not exist. Here is the config tree." % myargs.option
