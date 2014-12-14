@@ -222,18 +222,22 @@ class Main(QtCore.QObject):
 
 
   def command_quit(self,*args):
+    '''Quit the application, making sure that all threads have been cleaned up.'''
     logging.info( "shutting down..." )
     self.templogger.read_timer.stop()
     self.quit()
 
   def command_log(self,*args):
+    '''Log a string. The string is timestamped and written to file.'''
     for event in args:
       self.templogger.log_event(event)
 
   def command_plot(self,*args):
+    '''Display an interactive plot of the recorded temperatures'''
     self.plot.display()
 
   def command_status(self,*args):
+    '''Print status information.'''
     #print "Number of active threads: %d" % threading.active_count()
     print "user input thread: %s"        % (  "active" if self.input_thread.isRunning() else "inactive" )
     print "temp logger thread: %s"       % (  "active" if self.templog_thread.isRunning() else "inactive" )
@@ -242,13 +246,16 @@ class Main(QtCore.QObject):
     self.templogger.print_status()
 
   def command_clear(self,*args):
+    '''Clear all logged data. This will clear a plot.'''
     self.templogger.clear()
     self.plot.clear()
 
   def command_stats(self,*args):
+    '''Compute and print some statistics of the recoreded temperatures (avg, min, max, etc.)'''
     stats = dict()
 
     def calc_stats(t,T):
+
       stats =  {}
       # we need to convert all calculations to float
       stats['domain']    = "%s - %s" % ( fmtEpoch( min( t), self.plot.timefmt ), fmtEpoch( max( t), self.plot.timefmt ) )
@@ -280,9 +287,11 @@ class Main(QtCore.QObject):
     print yaml.dump( stats, default_flow_style=False )
 
   def command_dump(self,*args):
-      pprint.pprint( self.plot.data )
+    '''Print a data dump of the recorded data'''
+    pprint.pprint( self.plot.data )
 
   def command_msg(self,*args):
+    '''Print logged messages. For example, any debug messages that have been logged by the application.'''
     if len(args) < 1:
       args = ('all',)
 
@@ -326,6 +335,7 @@ class Main(QtCore.QObject):
         print line
 
   def command_set(self,*args):
+    '''Set the value of a configuration option.'''
     myargparser = argparse.ArgumentParser()
     myargparser.add_argument("option" )
     myargparser.add_argument("value" )
@@ -336,13 +346,15 @@ class Main(QtCore.QObject):
     self.config.set( myargs.option, myargs.value )
 
   def command_help(self,*args):
+    '''This output.'''
     commands = filter( lambda x: re.match( "command_.*", x) , dir(self) )
     print "commands:"
-    for command in commands:
-      print "\t%s" % command.replace("command_","")
+    for command in sorted(commands):
+      print "\t%s - %s" % ( command.replace("command_",""), getattr(self,command).__doc__ )
 
 
   def command_print(self,*args):
+    '''Print the value of a configuration option or tree'''
     myargparser = argparse.ArgumentParser()
     myargparser.add_argument("option", nargs="?", default="all" )
     myargs = myargparser.parse_args(args = args)
