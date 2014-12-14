@@ -16,33 +16,36 @@ class StokerWebSource( DataSource ):
 
   class Sensor(DataExtractor):
     def load(self, elem):
-      if elem is not None:
-        cols = elem.xpath("td")
+      self.name = ""
+      self.serial = ""
+      self.temp = 0
+      self.target = 0
+      self.low_set = 0
+      self.high_set = 0
 
-        # columns
-        # 0 - serial number (plain text)
-        # 1 - name          (input element)
-        # 2 - temperature   (plain text)
-        # 3 - target temp   (input element)
-        # 4 - alarm         (select element)
-        # 5 - low set       (input element)
-        # 6 - high set      (input element)
-        # 7 - blower        (select element)
-        self.serial   =        cols[0].text.strip()
-        self.name     =        cols[1].xpath("input")[0].get("value").strip()
-        self.temp     = float( cols[2].text)
-        self.target   = float( cols[3].xpath("input")[0].get("value") )
+      if elem == None:
+        return
 
-        self.low_set  = float( cols[5].xpath("input")[0].get("value") )
-        self.high_set = float( cols[6].xpath("input")[0].get("value") )
+      cols = elem.xpath("td")
+
+
+      # columns
+      # 0 - serial number (plain text)
+      # 1 - name          (input element)
+      # 2 - temperature   (plain text)
+      # 3 - target temp   (input element)
+      # 4 - alarm         (select element)
+      # 5 - low set       (input element)
+      # 6 - high set      (input element)
+      # 7 - blower        (select element)
+      self.serial   =        cols[0].text.strip()                           if cols[0] else ""
+      self.name     =        cols[1].xpath("input")[0].get("value").strip() if cols[1] else ""
+      self.temp     = float( cols[2].text)                                  if cols[2] else 0.
+      self.target   = float( cols[3].xpath("input")[0].get("value") )       if cols[3] else 0.
+
+      self.low_set  = float( cols[5].xpath("input")[0].get("value") )       if cols[5] else 0.
+      self.high_set = float( cols[6].xpath("input")[0].get("value") )       if cols[6] else 0.
         
-      else:
-        self.name = ""
-        self.serial = ""
-        self.temp = 0
-        self.target = 0
-        self.low_set = 0
-        self.high_set = 0
 
   class SystemInfo(DataExtractor):
     def load(self, elem):

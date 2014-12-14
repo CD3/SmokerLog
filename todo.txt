@@ -2,3 +2,4 @@ add qt interface
 calibration curves
 load plot data from log file
 set command for setting properties
+use pyoptiontree for configuration options
