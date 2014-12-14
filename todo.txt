@@ -3,3 +3,4 @@ calibration curves
 load plot data from log file
 set command for setting properties
 use pyoptiontree for configuration options
+print command doc strings in help

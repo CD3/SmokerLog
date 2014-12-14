@@ -5,6 +5,7 @@ from SmokerLog.Units import *
 from SmokerLog.TempLogger import *
 from SmokerLog.TempPlotter import *
 from SmokerLog.DataSources.StokerWebSource import *
+from pyoptiontree.pyoptiontree import *
 
 import sys
 import dpath.util
@@ -62,19 +63,19 @@ class Main(QtCore.QObject):
     args = mainargparser.parse_args(args = argv[1:])
 
     # set configuration options
-
-    self.logfilename = "SmokerLog.log"
-
-    if args.debug:
-      loglevel = logging.DEBUG
-    else:
-      loglevel = logging.INFO
+    self.config = PyOptionTree()
+    self.config.set( "data/source"       , args.host         )
+    self.config.set( "data/read_interval", args.read_interval)
+    self.config.set( "app/log/filename"  , "SmokerLog.log"   )
+    self.config.set( "app/log/level"     , logging.DEBUG if args.debug else logging.INFO )
+    self.config.set( "app/log/format"    , '[%(levelname)s] (%(threadName)s) %(asctime)s - %(message)s' )
 
 
     # configure logger
-    logging.basicConfig(filename=self.logfilename
-                       ,level=loglevel
-                       , format='[%(levelname)s] (%(threadName)s) %(asctime)s - %(message)s')
+    logging.basicConfig(filename=self.config.get("app/log/filename")
+                       ,level   =self.config.get("app/log/level"   )
+                       , format =self.config.get("app/log/format"  )
+                       )
 
 
 
@@ -327,7 +328,12 @@ class Main(QtCore.QObject):
   def command_set(self,*args):
     myargparser = argparse.ArgumentParser()
     myargparser.add_argument("option" )
+    myargparser.add_argument("value" )
     myargs = myargparser.parse_args(args = args)
+
+    logging.debug( "setting '%s' to '%s'" % ( myargs.option, myargs.value ) )
+
+    self.config.set( myargs.option, myargs.value )
 
   def command_help(self,*args):
     commands = filter( lambda x: re.match( "command_.*", x) , dir(self) )
@@ -335,6 +341,15 @@ class Main(QtCore.QObject):
     for command in commands:
       print "\t%s" % command.replace("command_","")
 
+
+  def command_print(self,*args):
+    myargparser = argparse.ArgumentParser()
+    myargparser.add_argument("option", nargs="?", default="all" )
+    myargs = myargparser.parse_args(args = args)
+
+    if not self.config.isValid( myargs.option ) and myargs.option != "all":
+      print "'%s' does not exist. Here is the config tree." % myargs.option
+    print self.config.get( myargs.option, self.config )
 
 
 
