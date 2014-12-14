@@ -5,7 +5,6 @@ from SmokerLog.Units import *
 from SmokerLog.TempLogger import *
 from SmokerLog.TempPlotter import *
 from SmokerLog.DataSources.StokerWebSource import *
-from pyoptiontree.pyoptiontree import *
 
 import sys
 import dpath.util
@@ -53,24 +52,28 @@ class Main(QtCore.QObject):
   trigger_input_read = QtCore.Signal()
   trigger_temp_reading = QtCore.Signal()
 
+  def set_default_config(self):
+    pass
+
   def __init__(self,argv):
     super(Main,self).__init__()
     # parse the command line
     mainargparser = argparse.ArgumentParser()
     mainargparser.add_argument("--host"           ,default="192.168.1.3" )
-    mainargparser.add_argument("--read_interval"  ,default=1.)
+    mainargparser.add_argument("--read_interval"  ,default="1. min")
     mainargparser.add_argument("--debug"          ,default=False, action='store_true')
 
     args = mainargparser.parse_args(args = argv[1:])
 
     # set configuration options
     self.config = PyOptionTree()
-    self.config.set( "data/source"       , args.host         )
-    self.config.set( "data/read_interval", args.read_interval)
-    self.config.set( "app/log/filename"  , "SmokerLog.log"   )
-    self.config.set( "app/log/level"     , logging.DEBUG if args.debug else logging.INFO )
-    self.config.set( "app/log/format"    , '[%(levelname)s] (%(threadName)s) %(asctime)s - %(message)s' )
-
+    
+    self.config.set( "data/source"                  , args.host                                                    )
+    self.config.set( "templogger/read_interval"     , args.read_interval                                           )
+    self.config.set( "templogger/cache_buffer_size" , 10                                                           )
+    self.config.set( "app/log/filename"             , "SmokerLog.log"                                              )
+    self.config.set( "app/log/level"                , logging.DEBUG if args.debug else logging.INFO                )
+    self.config.set( "app/log/format"               , '[%(levelname)s] (%(threadName)s) %(asctime)s - %(message)s' )
 
     # configure logger
     logging.basicConfig(filename=self.config.get("app/log/filename")
@@ -109,10 +112,9 @@ class Main(QtCore.QObject):
       #datasource = DataSource( )
       datasource = IntermittentDataSource( )
     else:
-      datasource = StokerWebSource( args.host )
+      datasource = StokerWebSource( self.config.get("data/source") )
     # the temperature logger
-    self.templogger = TempLogger( datasource
-                                , read_interval  = float(args.read_interval)*units.min )
+    self.templogger = TempLogger( datasource, self.config( "templogger" ) )
 
 
     self.templog_thread = QtCore.QThread(self)

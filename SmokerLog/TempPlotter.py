@@ -16,30 +16,47 @@ class TempPlotter(QtCore.QObject): # we inherit from QObject so we can emit sign
   data_changed = QtCore.Signal( )
   timefmt = "%H:%M:%S"
 
+  def set_config_defaults(self):
+    defaults = { "pickle/enabled" : True
+               , "pickle/filename" : ".TempPlotter.data.pickle"
+               , "temperature/units" : "F"
+               , "temperature/display/template" : '<div style="text-align: left"><span style="color: white;">Current Temps</span><br>%(temps)s</br></div>'
+               , "plot/colors/0" : 'red'
+               , "plot/colors/1" : 'blue'
+               , "plot/colors/2" : 'green'
+               , "plot/colors/3" : 'yellow'
+               }
+    for opt in defaults:
+      self.config.set( opt, self.config.get( opt, defaults[opt] ) )
 
-  def __init__(self, **kargs):
+  def __init__(self, config = PyOptionTree() ):
     super(TempPlotter,self).__init__()
     logging.debug("constructing "+self.__class__.__name__+" instance")
 
-    # configuration options
-    self.do_pickle_data = True
-    self.data_pickle_filename = ".TempPlotter.data.pickle"
-    self.tempunits = "F"
-    self.colors = [ 'red', 'blue', 'green', 'yellow' ]
-    self.tempDispTemplate = '<div style="text-align: left"><span style="color: white;">Current Temps</span><br>%(temps)s</br></div>'
+    self.config = config
+    self.set_config_defaults()
 
-    self.plotregion = None
-
-    if os.path.isfile( self.data_pickle_filename ):
+    # initialize data
+    if os.path.isfile( self.config.get("pickle/filename") ):
       logging.debug("pickled plot data exists, loading now")
-      self.data = pickle.load( open( self.data_pickle_filename, "rb" ) )
+      self.data = pickle.load( open( self.config.get("pickle/filename"), "rb" ) )
     else:
-      logging.debug("no pickled data found (didn't find '%s'), initializing data" % self.data_pickle_filename )
+      logging.debug("no pickled data found (didn't find '%s'), initializing data" % self.config.get("pickle/filename") )
       self.init_data()
 
+
+
+
+
+
     logging.debug("[%s] connecting signals/slots" % self.__class__.__name__)
-    if self.do_pickle_data:
+    if self.config.get( "pickle/enabled" ):
       self.data_changed.connect( self.pickle_data )
+
+
+    # declare attributes we will use in the methods
+    self.plotregion = None
+
 
 
 
@@ -100,18 +117,18 @@ class TempPlotter(QtCore.QObject): # we inherit from QObject so we can emit sign
 
     axis.tickStrings = types.MethodType( dateTickStrings, axis )
     axis = self.zplot.getAxis('left')
-    axis.setLabel("temperature (%s)" % self.tempunits)
+    axis.setLabel("temperature (%s)" % self.config.get("temperature/units"))
 
     axis = self.rplot.getAxis('bottom')
     axis.setLabel("time")
     axis.tickStrings = types.MethodType( dateTickStrings, axis )
     axis = self.rplot.getAxis('left')
-    axis.setLabel("temperature (%s)" % self.tempunits)
+    axis.setLabel("temperature (%s)" % self.config.get("temperature/units"))
 
 
 
     # ad a text item to display current temperatures
-    text = self.tempDispTemplate
+    text = self.config.get("temperature/display/template")
     self.tempDisp = pg.TextItem( html=text, anchor=(1,0) )
     self.rplot.addItem( self.tempDisp )
 
@@ -205,8 +222,8 @@ class TempPlotter(QtCore.QObject): # we inherit from QObject so we can emit sign
         self.plotcurves[name]['region'] = self.rplot.plot( name = name )
         self.plotcurves[name]['zoom']   = self.zplot.plot( name = name )
 
-      self.plotcurves[name]['region'].setData(x = self.data[name]['t'], y = self.data[name]['T'], pen=pg.mkPen( self.colors[i][0] ) )
-      self.plotcurves[name]['zoom'  ].setData(x = self.data[name]['t'], y = self.data[name]['T'], pen=pg.mkPen( self.colors[i][0] ) )
+      self.plotcurves[name]['region'].setData(x = self.data[name]['t'], y = self.data[name]['T'], pen=pg.mkPen( self.config.get("plot/colors/%d"%i)[0] ) )
+      self.plotcurves[name]['zoom'  ].setData(x = self.data[name]['t'], y = self.data[name]['T'], pen=pg.mkPen( self.config.get("plot/colors/%d"%i)[0] ) )
       i += 1
 
     self.displayCurrentTemps()
@@ -220,10 +237,10 @@ class TempPlotter(QtCore.QObject): # we inherit from QObject so we can emit sign
     i = 0
     for sensor in self.data:
       T = self.data[sensor]['T'][-1]
-      temps = temps + '<br><span style="color:%(color)s">%(temp).2f<span></br>' % {'color' : self.colors[i], 'temp' : T}
+      temps = temps + '<br><span style="color:%(color)s">%(temp).2f<span></br>' % {'color' : self.config.get("plot/colors/%d"%i), 'temp' : T}
       i += 1
     
-    text = self.tempDispTemplate % {'temps' : temps }
+    text = self.config.get("temperature/display/template") % {'temps' : temps }
     self.tempDisp.setHtml( text )
     view = self.rplot.viewRange()
     self.tempDisp.setPos( view[0][1], view[1][1] )
@@ -242,12 +259,16 @@ class TempPlotter(QtCore.QObject): # we inherit from QObject so we can emit sign
 
 
   def pickle_data(self):
-    logging.debug("pickling data to %s" % self.data_pickle_filename )
-    pickle.dump( self.data, open( self.data_pickle_filename, "wb" ) )
+    logging.debug("pickling data to %s" % self.config.get("pickle/filename") )
+    pickle.dump( self.data, open( self.config.get("pickle/filename"), "wb" ) )
+
+  def unpickle_data(self):
+    logging.debug("unpickling data from %s" % self.config.get("pickle/filename") )
+    self.data = pickle.load( open( self.config.get("pickle/filename"), "rb" ) )
 
   def clear(self):
     self.init_data()
-    os.remove( self.data_pickle_filename )
+    os.remove( self.config.get("pickle/filename") )
   
   def init_data(self):
     self.data = collections.OrderedDict()

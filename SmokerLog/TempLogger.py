@@ -14,9 +14,22 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
   new_data_read = QtCore.Signal( dict )
   timefmt = "%Y-%m-%d %H:%M:%S"
 
-  def __init__(self, source, prefix = "default", read_interval = 1.*units.min, cache_buffer_size = 10 ):
+  def set_config_defaults(self):
+    defaults = { "prefix" : "default"
+               , "read_interval" : "1. min"
+               , "cache_buffer_size" : 10
+               }
+
+    for opt in defaults:
+      self.config.set( opt, self.config.get( opt, defaults[opt] ) )
+
+
+  def __init__(self, source, config):
     super(TempLogger,self).__init__()
     logging.debug("constructing %s instance" % self.__class__.__name__)
+
+    self.config = config
+    self.set_config_defaults()
 
     # state information
     self.start = datetime.datetime.now()
@@ -27,14 +40,9 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
     info = self.data_source.get_info()
     self.tempunits = info['tempunits']
 
-    # configuration
-    self.prefix = prefix
-    self.read_interval = read_interval
-    self.cache_buffer_size = cache_buffer_size
-
     # read timer
     self.read_timer = QtCore.QTimer()
-    self.read_timer.setInterval( self.read_interval.to( units.millisecond ).magnitude )
+    self.read_timer.setInterval( unit(self.config.get("read_interval"),units.minute).to( units.millisecond ).magnitude )
 
 
     # data
@@ -75,7 +83,7 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
     while len( self.cache ):
       item = self.cache.popleft()
       for (name,temp) in item["sensors"].items():
-        filename = "%s-%s.txt" % (self.prefix,name)
+        filename = "%s-%s.txt" % (self.config.get("prefix"),name)
         with open( filename, 'a' ) as f:
           f.write( "%s %s\n" % (item["time"],temp) )
 
@@ -83,20 +91,21 @@ class TempLogger(QtCore.QObject): # we inherit from QObject so we can emit signa
     # the cache is used to write data to file
     logging.debug("appending data to cache")
     self.cache.append(data)
-    if len( self.cache ) >= self.cache_buffer_size:
+    if len( self.cache ) >= int( self.config.get("cache_buffer_size") ):
       self.write()
 
   def log_event(self, event, time = None):
     if time is None:
       time = datetime.datetime.now()
-    filename = "%s-%s.txt" % (self.prefix,"eventLog")
+    filename = "%s-%s.txt" % (self.config.get("prefix"),"eventLog")
     with open( filename, 'a' ) as f:
       f.write( "%s '%s'\n" % (str(time),event) )
 
   def print_status(self):
     print "data source: %s" % self.data_source
-    print "read interval: %s" % self.read_interval
+    print "read interval: %s" % unit(self.config.get("read_interval") )
 
   def clear(self):
     self.cache.clear()
+
     
