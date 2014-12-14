@@ -234,6 +234,8 @@ class Main(QtCore.QObject):
 
   def command_status(self,*args):
     #print "Number of active threads: %d" % threading.active_count()
+    print "user input thread: %s"        % (  "active" if self.input_thread.isRunning() else "inactive" )
+    print "temp logger thread: %s"       % (  "active" if self.templog_thread.isRunning() else "inactive" )
     print "Run time: %s"                 % (datetime.datetime.now() - self.templogger.start)
     print "Last read time: %s"           % fmtEpoch( self.plot.getMaxTime(), self.plot.timefmt )
     self.templogger.print_status()
