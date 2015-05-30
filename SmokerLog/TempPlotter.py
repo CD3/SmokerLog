@@ -237,7 +237,7 @@ class TempPlotter(QtCore.QObject): # we inherit from QObject so we can emit sign
     i = 0
     for sensor in self.data:
       T = self.data[sensor]['T'][-1]
-      temps = temps + '<br><span style="color:%(color)s">%(temp).2f<span></br>' % {'color' : self.config.get("plot/colors/%d"%i), 'temp' : T}
+      temps = temps + '<br><span style="color:%(color)s;font-size:36pt">%(temp).2f<span></br>' % {'color' : self.config.get("plot/colors/%d"%i), 'temp' : T}
       i += 1
     
     text = self.config.get("temperature/display/template") % {'temps' : temps }
