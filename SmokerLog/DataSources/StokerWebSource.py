@@ -28,7 +28,6 @@ class StokerWebSource( DataSource ):
 
       cols = elem.xpath("td")
 
-
       # columns
       # 0 - serial number (plain text)
       # 1 - name          (input element)
@@ -38,13 +37,13 @@ class StokerWebSource( DataSource ):
       # 5 - low set       (input element)
       # 6 - high set      (input element)
       # 7 - blower        (select element)
-      self.serial   =        cols[0].text.strip()                           if cols[0] else ""
-      self.name     =        cols[1].xpath("input")[0].get("value").strip() if cols[1] else ""
-      self.temp     = float( cols[2].text)                                  if cols[2] else 0.
-      self.target   = float( cols[3].xpath("input")[0].get("value") )       if cols[3] else 0.
+      self.serial   =        cols[0].text.strip()                           if cols[0] is not None else ""
+      self.name     =        cols[1].xpath("input")[0].get("value").strip() if cols[1] is not None else ""
+      self.temp     = float( cols[2].text)                                  if cols[2] is not None else 0.
+      self.target   = float( cols[3].xpath("input")[0].get("value") )       if cols[3] is not None else 0.
 
-      self.low_set  = float( cols[5].xpath("input")[0].get("value") )       if cols[5] else 0.
-      self.high_set = float( cols[6].xpath("input")[0].get("value") )       if cols[6] else 0.
+      self.low_set  = float( cols[5].xpath("input")[0].get("value") )       if cols[5] is not None else 0.
+      self.high_set = float( cols[6].xpath("input")[0].get("value") )       if cols[6] is not None else 0.
         
 
   class SystemInfo(DataExtractor):
