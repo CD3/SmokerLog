@@ -300,7 +300,7 @@ class Main(QtCore.QObject):
     self.plot.clear()
 
   def command_stats(self,*args):
-    '''Compute and print some statistics of the recoreded temperatures (avg, min, max, etc.)'''
+    '''Compute and print some statistics of the recorded temperatures (avg, min, max, etc.)'''
     me  = inspect.stack()[0][3]
     cmd = me.replace("command_","")
     doc = getattr(self,me).__doc__
