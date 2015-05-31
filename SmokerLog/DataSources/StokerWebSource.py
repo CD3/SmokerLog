@@ -10,6 +10,7 @@ from io import StringIO
 class StokerWebSource( DataSource ):
   class DataExtractor:
     def __init__(self, elem = None):
+      self.valid = False
       self.load(elem)
     def dump(self):
       print self.__dict__
@@ -23,10 +24,22 @@ class StokerWebSource( DataSource ):
       self.low_set = 0
       self.high_set = 0
 
+      # if the element is None, we can't do anything
       if elem == None:
-        return
+        return None
 
       cols = elem.xpath("td")
+
+      # make sure we have everything we need before going on
+      # immediatly return if not.
+
+      # first and third columns need to have text
+      if len(cols) < 1 or cols[0] == None or cols[0].text == None:
+        return None
+      
+      # ...and third
+      if len(cols) < 3 or cols[2] == None or cols[2].text == None:
+        return None
 
       # columns
       # 0 - serial number (plain text)
@@ -44,6 +57,8 @@ class StokerWebSource( DataSource ):
 
       self.low_set  = float( cols[5].xpath("input")[0].get("value") )       if cols[5] is not None else 0.
       self.high_set = float( cols[6].xpath("input")[0].get("value") )       if cols[6] is not None else 0.
+
+      self.valid = True
         
 
   class SystemInfo(DataExtractor):
@@ -99,8 +114,11 @@ class StokerWebSource( DataSource ):
 
     sensors = list()
     rows = data_table.xpath("td/table/tr")
-    for i in range(4,len(rows)-1):
-      sensors.append( self.Sensor( rows[i] ) )
+
+    for i in xrange(1,len(rows)-1):
+      sens = self.Sensor( rows[i] )
+      if sens.valid:
+        sensors.append( sens )
 
     data = collections.OrderedDict()
     for sensor in sensors:

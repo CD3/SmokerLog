@@ -1,0 +1,131 @@
+</script>
+<TITLE>Stoker Status</TITLE>
+<META HTTP-EQUIV="Expires" CONTENT="-1">
+<META HTTP-EQUIV="Pragma" CONTENT="no-cache">
+<META HTTP-EQUIV="Cache-control" CONTENT="no-cache">
+<META HTTP-EQUIV="Cache" CONTENT="no-cache">
+</HEAD>
+<BODY onload="do_presel(2,1)">
+  <table>
+    <form METHOD="POST" ENCTYPE="application/x-www-form-urlencoded" ACTION="stoker.Post_Handler" NAME="form1">
+      <tr>
+        <td>
+          <p>
+          <font size="+2"><b>Stoker Status</b></font><br />
+          Powered by <a href="http://www.rocksbarbque.com">Rock's Bar-B-Que</a><br />
+          Software by kaytat, Version
+          2.0.259
+          </p>
+          <script type="text/javascript">
+<!--
+document.write(Date() + "<br /><b>Temperatures in F</b>");
+//-->
+          </script>
+        </td>
+        <td align="right">
+          <table BORDER="2" CELLPADDING="5">
+            <tr><td class="ser_num"><b>Blower</b></td>
+              <td><b>Available Blowers</b></td></tr>
+            <tr>
+              <td class="ser_num">060000002AAB6F05</td>
+              <td><input size="16" maxLength="32" name="n2060000002AAB6F05" value="Blower"></td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+      <tr>
+        <td colspan="2">
+          <table BORDER="2" CELLPADDING="5">
+            <tr>
+              <td class="ser_num"><b>Temp Sensor</b></td>
+              <td><b>Description</b></td>
+              <td><b>Temp</b></td>
+              <td><b>Target</b></td>
+              <td><b>Alarm</b></td>
+              <td><b>Low Set</b></td>
+              <td><b>High Set</b></td>
+              <td><b>Blower</b></td>
+            </tr>
+            <tr><td colspan="7"><b>Control Sensors</b></td></tr>
+            <tr>
+              <td class="ser_num">2E0000112A57C530</td>
+              <td><input size="16" maxLength="32" name="n12E0000112A57C530" value="Pit             "></td>
+              <td>177.3</td>
+              <td><input size="6" maxLength="6" name="ta2E0000112A57C530" value="220"></td>
+              <td><select name="al2E0000112A57C530" onchange="do_disable(0, 0)">
+                  <option value="0">None
+                  <option value="1">Food
+                  <option value="2">Fire
+                </select>
+              </td>
+              <td><input size="6" maxLength="6" name="tl2E0000112A57C530" value="210"></td>
+              <td><input size="6" maxLength="6" name="th2E0000112A57C530" value="230"></td>
+              <td><select name="sw2E0000112A57C530">
+                  <option value="None">None
+                  <option value="060000002AAB6F05">Blower
+                </select>
+              </td>
+            </tr>
+            <tr><td colspan="7"><b>Alarm Sensors (None)</b></td></tr>
+            <tr><td colspan="7"><b>Monitoring Sensors</b></td></tr>
+            <tr>
+              <td class="ser_num">E70000112A55C830</td>
+              <td><input size="16" maxLength="32" name="n1E70000112A55C830" value="Meat 1          "></td>
+              <td>159</td>
+              <td><input size="6" maxLength="6" name="taE70000112A55C830" value="180"></td>
+              <td><select name="alE70000112A55C830" onchange="do_disable(0, 0)">
+                  <option value="0">None
+                  <option value="1">Food
+                  <option value="2">Fire
+                </select>
+              </td>
+              <td><input size="6" maxLength="6" name="tlE70000112A55C830" value="32"></td>
+              <td><input size="6" maxLength="6" name="thE70000112A55C830" value="32"></td>
+              <td><select name="swE70000112A55C830">
+                  <option value="None">None
+                  <option value="060000002AAB6F05">Blower
+                </select>
+              </td>
+            </tr>
+            <SCRIPT type="text/javascript">
+<!--
+var sel = [0,"060000002AAB6F05",0,""];
+var sw_id = ["060000002AAB6F05"];
+var check = false
+//-->
+            </script>
+
+            <tr>
+              <td class="ser_num"><b>Temp Sensor</b></td>
+              <td><b>Description</b></td>
+              <td><b>Temp</b></td>
+              <td><b>Target</b></td>
+              <td><b>Alarm</b></td>
+              <td><b>Low Set</b></td>
+              <td><b>High Set</b></td>
+              <td><b>Blower</b></td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+      <tr>
+        <td colspan="2">
+          <br />
+          <input type="checkbox" name="q_show_ser" />Show serial numbers<br />
+          <INPUT TYPE="submit" VALUE="Save Changes" />
+        </td>
+      </tr>
+    </form>
+    <form METHOD="POST" ENCTYPE="application/x-www-form-urlencoded" ACTION="stoker.Post_Handler" NAME="form2">
+      <tr>
+        <td colspan="2"><br />
+
+
+        </td>
+      </tr>
+    </form>
+  </table>
+  </form>
+</BODY>
+</HTML>
+
