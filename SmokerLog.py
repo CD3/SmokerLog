@@ -317,11 +317,11 @@ class Main(QtCore.QObject):
       stats =  {}
       # we need to convert all calculations to float
       stats['domain']    = "%s - %s" % ( fmtEpoch( min( t), self.plot.timefmt ), fmtEpoch( max( t), self.plot.timefmt ) )
-      stats['current']  = float( max( T) )
-      stats['max']      = float( max( T) )
-      stats['min']      = float( min( T) )
+      stats['current']  = float(      T[-1])
+      stats['max']      = float( max( T)   )
+      stats['min']      = float( min( T)   )
       stats['avg']      = float( sum( T) / len( T ) )
-      stats['stdev']    = float( math.sqrt( sum( (T - stats['avg'])**2 ) ) )
+      stats['stdev']    = float( math.sqrt( sum( (T - stats['avg'])**2 )/len( T ) ) )
 
       return stats
 
