@@ -5,6 +5,7 @@ from SmokerLog.Units import *
 from SmokerLog.TempLogger import *
 from SmokerLog.TempPlotter import *
 from SmokerLog.DataSources.StokerWebSource import *
+from SmokerLog.DataSources.StokerJSONSource import *
 
 import sys
 import dpath.util
@@ -112,7 +113,8 @@ class Main(QtCore.QObject):
       #datasource = DataSource( )
       datasource = IntermittentDataSource( )
     else:
-      datasource = StokerWebSource( self.config.get("data/source") )
+      # datasource = StokerWebSource( self.config.get("data/source") )
+      datasource = StokerJSONSource( self.config.get("data/source") )
     # the temperature logger
     self.templogger = TempLogger( datasource, self.config( "templogger" ) )
 

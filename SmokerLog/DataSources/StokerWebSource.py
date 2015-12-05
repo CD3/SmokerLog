@@ -79,6 +79,7 @@ class StokerWebSource( DataSource ):
   def __init__(self, host):
 
     # html scraper
+    self.version = '2.0.x'
     self.host = host
     self.parser = etree.HTMLParser()
     self.url = "http://%(host)s" % {'host': self.host}
