@@ -10,6 +10,7 @@ import numpy
 import types
 import os
 import collections
+import datetime
 
 
 class TempPlotter(QtCore.QObject): # we inherit from QObject so we can emit signals
@@ -233,14 +234,17 @@ class TempPlotter(QtCore.QObject): # we inherit from QObject so we can emit sign
 
 
   def displayCurrentTemps(self):
-    temps  = ""
+    disp = ""
     i = 0
+    now = time.mktime( datetime.datetime.now().timetuple() )
     for sensor in self.data:
       T = self.data[sensor]['T'][-1]
-      temps = temps + '<br><span style="color:%(color)s;font-size:36pt">%(temp).2f<span></br>' % {'color' : self.config.get("plot/colors/%d"%i), 'temp' : T}
+      t = self.data[sensor]['t'][-1]
+      dt = (now - t)/60.
+      disp = disp + '<br><span style="color:%(color)s;font-size:36pt">%(temp).2f@%(time).2f<span></br>' % {'color' : self.config.get("plot/colors/%d"%i), 'temp' : T, 'time' : dt}
       i += 1
     
-    text = self.config.get("temperature/display/template") % {'temps' : temps }
+    text = self.config.get("temperature/display/template") % {'temps' : disp}
     self.tempDisp.setHtml( text )
     view = self.rplot.viewRange()
     self.tempDisp.setPos( view[0][1], view[1][1] )

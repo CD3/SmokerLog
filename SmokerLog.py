@@ -51,7 +51,8 @@ class Main(QtCore.QObject):
   started = QtCore.Signal()
 
   trigger_input_read = QtCore.Signal()
-  trigger_temp_reading = QtCore.Signal()
+  trigger_start_temp_reading = QtCore.Signal()
+  trigger_temp_read = QtCore.Signal()
 
   def set_default_config(self):
     pass
@@ -121,7 +122,8 @@ class Main(QtCore.QObject):
 
     self.templog_thread = QtCore.QThread(self)
     self.templogger.moveToThread( self.templog_thread )
-    self.trigger_temp_reading.connect( self.templogger.start_reading )
+    self.trigger_start_temp_reading.connect( self.templogger.start_reading )
+    self.trigger_temp_read.connect( self.templogger.read )
     self.finished.connect( self.templog_thread.quit )
 
 
@@ -136,6 +138,13 @@ class Main(QtCore.QObject):
     # the temperature plotter
     self.plot = TempPlotter()
     self.templogger.new_data_read.connect( self.plot.append_to_data )
+
+    # plot refresh timer
+    self.plot_refresh_timer = QtCore.QTimer()
+    self.plot_refresh_timer.setInterval( (1*units.second).to( units.millisecond ).magnitude )
+    self.plot_refresh_timer.timeout.connect( self.plot.plot )
+
+
 
 
 
@@ -167,7 +176,7 @@ class Main(QtCore.QObject):
 
     # start reading data
     self.templog_thread.start()    # start temp logger
-    self.trigger_temp_reading.emit()    # start reading data
+    self.trigger_start_temp_reading.emit()    # start reading data
 
     self.input_thread.start()    # start the user input thread
     self.process_command("help") # kick off the input loop by processing the "help" command
@@ -268,6 +277,7 @@ class Main(QtCore.QObject):
       return
 
     self.plot.display()
+    self.plot_refresh_timer.start()
 
   def command_status(self,*args):
     '''Print status information.'''
@@ -459,6 +469,18 @@ class Main(QtCore.QObject):
       print "'%s' does not exist. Here is the config tree." % myargs.option
     print self.config.get( myargs.option, self.config )
 
+  def command_read(self,*args):
+    '''Take a temperature reading.'''
+    me  = inspect.stack()[0][3]
+    cmd = me.replace("command_","")
+    doc = getattr(self,me).__doc__
+    myargparser = argparse.ArgumentParser(prog=cmd, description=doc)
+    try:
+      myargs = myargparser.parse_args(args = args)
+    except SystemExit:
+      return
+
+    self.trigger_temp_read.emit()
 
 
 
